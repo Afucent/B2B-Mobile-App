@@ -1,0 +1,185 @@
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+
+import { LinkButton } from '@/components/ui/LinkButton';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { Colors, Radius } from '@/constants/theme';
+import { listDealers, type Dealer } from '@/lib/api/dealers';
+import { getFieldOperationsSettings } from '@/lib/api/org';
+import { haversineMeters } from '@/lib/geo';
+import { geocodeAddress, requestLocation } from '@/lib/location';
+import { routeForLocationAction } from '@/lib/locationGate';
+import { UNPLANNED_REASONS } from '@/lib/visits';
+
+export default function UnplannedVisitScreen() {
+  const [query, setQuery] = useState('');
+  const [dealers, setDealers] = useState<Dealer[]>([]);
+  const [selected, setSelected] = useState<Dealer | null>(null);
+  const [reason, setReason] = useState<string | null>(UNPLANNED_REASONS[0]);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      void listDealers(query).then((res) => setDealers(res.items.slice(0, 8))).catch(() => setDealers([]));
+    }, 250);
+    return () => clearTimeout(handle);
+  }, [query]);
+
+  async function start() {
+    if (!selected || !reason) return;
+    setLoading(true);
+    const settings = await getFieldOperationsSettings().catch(() => null);
+    const radius = settings?.dealer_geofence_radius_m ?? 500;
+    let distance = 0;
+    let inside = '0';
+    try {
+      const loc = await requestLocation();
+      const geo = await geocodeAddress(selected.address);
+      if (geo) {
+        distance = Math.round(haversineMeters(loc.latitude, loc.longitude, geo.latitude, geo.longitude));
+        inside = distance <= radius ? '1' : '0';
+      }
+    } catch {
+      const block = await routeForLocationAction(
+        `/visit-check-in?id=${selected.id}&unplanned=1&reason=${encodeURIComponent(reason)}`,
+      );
+      setLoading(false);
+      if (block) {
+        router.push(block);
+        return;
+      }
+    }
+    setLoading(false);
+    router.push({
+      pathname: '/visit-check-in',
+      params: {
+        id: selected.id,
+        unplanned: '1',
+        reason,
+        distance: String(distance),
+        radius: String(radius),
+        inside,
+      },
+    });
+  }
+
+  return (
+    <View style={styles.flex}>
+      <ScreenHeader title="Unplanned Visit" onBack={() => router.back()} />
+      <Text style={styles.sub}>Log immediate off-schedule checkpoint</Text>
+      <ScrollView contentContainerStyle={styles.body}>
+        <View style={styles.warn}>
+          <Ionicons name="warning" size={16} color={Colors.pendingText} />
+          <Text style={styles.warnText}>
+            Log a visit to a dealer not on your assigned list for today. A valid business reason is required.
+          </Text>
+        </View>
+
+        <Text style={styles.label}>Search dealer *</Text>
+        <View style={styles.searchWrap}>
+          <Ionicons name="search" size={18} color={Colors.muted} />
+          <TextInput
+            value={selected ? selected.name : query}
+            onChangeText={(value) => {
+              setSelected(null);
+              setQuery(value);
+            }}
+            placeholder="Type dealer name..."
+            placeholderTextColor={Colors.muted}
+            style={styles.search}
+          />
+        </View>
+        {!selected
+          ? dealers.map((dealer) => (
+              <Pressable key={dealer.id} style={styles.option} onPress={() => setSelected(dealer)}>
+                <Ionicons name="location-outline" size={16} color={Colors.muted} />
+                <Text style={styles.optionText}>{dealer.name}</Text>
+              </Pressable>
+            ))
+          : null}
+
+        <Text style={styles.label}>Reason for unplanned visit *</Text>
+        <Pressable style={styles.select} onPress={() => setOpen((v) => !v)}>
+          <Text style={[styles.selectText, !reason && { color: Colors.muted }]}>
+            {reason || 'Nearby opportunity'}
+          </Text>
+          <Ionicons name="chevron-down" size={18} color={Colors.muted} />
+        </Pressable>
+        {open
+          ? UNPLANNED_REASONS.map((item) => (
+              <Pressable
+                key={item}
+                style={styles.option}
+                onPress={() => {
+                  setReason(item);
+                  setOpen(false);
+                }}>
+                <Text style={styles.optionText}>{item}</Text>
+              </Pressable>
+            ))
+          : null}
+
+        <Text style={styles.note}>Note: Unplanned visits are logged and instantly visible to your regional sales manager.</Text>
+        <PrimaryButton
+          label="Start Visit"
+          loading={loading}
+          disabled={!selected || !reason}
+          onPress={() => void start()}
+        />
+        <LinkButton label="Cancel" onPress={() => router.back()} />
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1, backgroundColor: Colors.surface },
+  sub: { textAlign: 'center', color: Colors.muted, marginTop: -6 },
+  body: { padding: 16, gap: 10, paddingBottom: 32 },
+  warn: {
+    backgroundColor: Colors.pendingBg,
+    borderRadius: Radius.md,
+    padding: 12,
+    flexDirection: 'row',
+    gap: 8,
+  },
+  warnText: { flex: 1, color: Colors.heading, fontSize: 13, lineHeight: 18 },
+  label: { fontSize: 12, fontWeight: '800', color: Colors.heading, marginTop: 8 },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+    backgroundColor: Colors.surfaceWarm,
+    borderRadius: Radius.md,
+    paddingHorizontal: 12,
+    height: 48,
+  },
+  search: { flex: 1, color: Colors.heading },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  optionText: { color: Colors.heading, fontWeight: '600' },
+  select: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    height: 48,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.background,
+  },
+  selectText: { fontWeight: '600', color: Colors.heading },
+  note: { color: Colors.muted, fontSize: 12, lineHeight: 18 },
+});
