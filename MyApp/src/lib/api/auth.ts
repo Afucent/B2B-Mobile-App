@@ -16,15 +16,30 @@ export interface OrganizationBrief {
   enabled_modules?: string[];
 }
 
+export interface PermissionBrief {
+  module: string;
+  action: string;
+  scope: string;
+}
+
+export interface RoleBrief {
+  id: string;
+  name: string;
+}
+
 export interface MeResponse {
   id: string;
   name: string;
   personal_email: string;
   mobile: string | null;
   avatar_url?: string | null;
+  designation?: string | null;
   status: string;
   access_surface: string;
+  client_surface?: string;
   organization: OrganizationBrief | null;
+  roles?: RoleBrief[];
+  permissions?: PermissionBrief[];
   mobile_eligible?: boolean;
 }
 
@@ -32,6 +47,7 @@ export function orgLogin(companyCode: string, identifier: string, password: stri
   const body: Record<string, string> = {
     company_code: companyCode.trim(),
     password,
+    surface: 'mobile',
   };
   if (isEmail(identifier)) {
     body.personal_email = identifier.trim();

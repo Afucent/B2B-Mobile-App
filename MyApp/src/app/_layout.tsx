@@ -16,6 +16,7 @@ export default function RootLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="(auth)" />
           <Stack.Screen name="(app)" />
+          <Stack.Screen name="(admin)" />
           <Stack.Screen name="clock-in" />
           <Stack.Screen name="clock-in-confirmed" />
           <Stack.Screen name="clock-out" />
@@ -38,6 +39,9 @@ export default function RootLayout() {
           <Stack.Screen name="apply-leave" />
           <Stack.Screen name="leave-applied" />
           <Stack.Screen name="leave-balance" />
+          <Stack.Screen name="leave-management" />
+          <Stack.Screen name="visit-assign" />
+          <Stack.Screen name="visit-complete" />
         </Stack>
       </AuthProvider>
     </GestureHandlerRootView>

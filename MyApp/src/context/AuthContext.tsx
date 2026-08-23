@@ -4,12 +4,12 @@ import { getMe, orgLogin, type MeResponse } from '@/lib/api/auth';
 import { ApiRequestError } from '@/lib/api/client';
 import { clearToken, getCompanyCode, getToken, setCompanyCode, setToken } from '@/lib/storage';
 
-const EMPLOYEE_ONLY_MESSAGE =
-  'This app is for organization employees only. Use the web portal.';
+const MOBILE_ACCESS_MESSAGE =
+  'You do not have mobile app access. Ask your organisation admin to enable App access for your role.';
 
-function assertMobileEmployee(me: MeResponse) {
+function assertMobileAccess(me: MeResponse) {
   if (me.mobile_eligible === false || !me.organization || me.access_surface === 'platform') {
-    throw new ApiRequestError(EMPLOYEE_ONLY_MESSAGE, 403);
+    throw new ApiRequestError(MOBILE_ACCESS_MESSAGE, 403);
   }
 }
 
@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     try {
       const me = await getMe();
-      assertMobileEmployee(me);
+      assertMobileAccess(me);
       setUser(me);
       setStatus('signedIn');
     } catch {
@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await setCompanyCode(code);
       setCompany(code);
       const me = await getMe();
-      assertMobileEmployee(me);
+      assertMobileAccess(me);
       setUser(me);
       setStatus('signedIn');
     } catch (err) {

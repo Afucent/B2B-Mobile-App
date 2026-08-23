@@ -5,15 +5,28 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Colors } from '@/constants/theme';
+import TabModuleLinks from '@/components/TabModuleLinks';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
 import { getEmployeeLiveDetail, type EmployeeLiveDetail } from '@/lib/api/attendance';
+import { isFieldTrackingEnabled } from '@/lib/permissions';
+import { buildProfileTabSections } from '@/lib/tabNavigation';
 import { employeeCode, initials } from '@/lib/format';
+import { formatRoleName } from '@/lib/permissions';
 
 export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { canView, canCreate, canManage } = usePermissions();
   const [live, setLive] = useState<EmployeeLiveDetail | null>(null);
+
+  const sections = buildProfileTabSections({
+    canView,
+    canCreate,
+    canManage,
+    fieldTrackingEnabled: isFieldTrackingEnabled(user?.organization?.enabled_modules),
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -24,8 +37,12 @@ export default function ProfileScreen() {
     }, [user]),
   );
 
+  const roleName = user?.roles?.[0]?.name;
+
   return (
-    <ScrollView style={styles.flex} contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
+    <ScrollView
+      style={styles.flex}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, paddingBottom: 40 }]}>
       <View style={styles.top}>
         <Text style={styles.screenTitle}>My Profile</Text>
         <Pressable onPress={() => router.push('/settings')} hitSlop={8}>
@@ -42,7 +59,9 @@ export default function ProfileScreen() {
           </View>
         )}
         <Text style={styles.name}>{user?.name}</Text>
-        <Text style={styles.role}>{live?.designation || 'Field Sales Executive'}</Text>
+        <Text style={styles.role}>
+          {roleName ? formatRoleName(roleName) : live?.designation || 'Team member'}
+        </Text>
       </View>
 
       <View style={styles.card}>
@@ -50,12 +69,10 @@ export default function ProfileScreen() {
         <Row label="Mobile" value={user?.mobile ?? '—'} />
         <Row label="Email" value={user?.personal_email ?? '—'} />
         <Row label="Region" value={live?.region_label ?? '—'} />
-        <Row label="City" value="—" />
-        <Row label="Reporting manager" value="—" />
-        <Row label="Joining date" value="—" />
         <Row label="Company code" value={user?.organization?.company_code ?? '—'} last />
       </View>
-      <Text style={styles.foot}>Contact system administrator to update this information.</Text>
+
+      <TabModuleLinks sections={sections} />
     </ScrollView>
   );
 }
@@ -71,11 +88,11 @@ function Row({ label, value, last }: { label: string; value: string; last?: bool
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
-  content: { paddingHorizontal: 16, paddingBottom: 40 },
+  content: { paddingHorizontal: Spacing.md, gap: Spacing.md },
   top: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   screenTitle: { fontSize: 22, fontWeight: '800', color: Colors.heading },
   gear: { fontSize: 20, color: Colors.heading },
-  hero: { alignItems: 'center', paddingVertical: 20, gap: 6 },
+  hero: { alignItems: 'center', paddingVertical: 12, gap: 6 },
   avatar: { width: 84, height: 84, borderRadius: 42 },
   avatarFallback: {
     width: 84,
@@ -88,7 +105,7 @@ const styles = StyleSheet.create({
   avatarText: { color: Colors.brand, fontSize: 28, fontWeight: '800' },
   name: { fontSize: 22, fontWeight: '800', color: Colors.heading },
   role: { color: Colors.muted },
-  card: { backgroundColor: Colors.background, borderRadius: 16 },
+  card: { backgroundColor: Colors.background, borderRadius: Radius.lg },
   row: {
     minHeight: 52,
     paddingHorizontal: 14,
@@ -99,5 +116,4 @@ const styles = StyleSheet.create({
   rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border },
   label: { color: Colors.muted, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5, flex: 1 },
   value: { fontWeight: '700', color: Colors.heading, flex: 1.2, textAlign: 'right' },
-  foot: { textAlign: 'center', color: Colors.muted, marginTop: 16, fontSize: 12 },
 });

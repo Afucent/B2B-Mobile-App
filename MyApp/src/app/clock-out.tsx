@@ -1,4 +1,4 @@
-import { Image } from 'expo-image';
+import LocationMap from '@/components/LocationMap';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
@@ -14,7 +14,7 @@ import {
   type AttendanceRecord,
   type EmployeeLiveDetail,
 } from '@/lib/api/attendance';
-import { durationLabel, formatClock, formatKm, mapPreviewUrl } from '@/lib/format';
+import { durationLabel, formatClock, formatKm } from '@/lib/format';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
 
 export default function ClockOutScreen() {
@@ -79,9 +79,7 @@ export default function ClockOutScreen() {
       <ScreenHeader title="Clock Out" onBack={() => router.back()} />
       <View style={styles.hero}>
         {loc || live?.latitude ? (
-          <View style={styles.phone}>
-            <Image source={{ uri: mapPreviewUrl(lat, lon, 480, 640) }} style={styles.phoneMap} contentFit="cover" />
-          </View>
+          <LocationMap latitude={lat} longitude={lon} height={240} />
         ) : (
           <ActivityIndicator color="#fff" />
         )}

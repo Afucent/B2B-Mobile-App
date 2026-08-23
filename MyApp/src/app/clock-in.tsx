@@ -1,4 +1,4 @@
-import { Image } from 'expo-image';
+import LocationMap from '@/components/LocationMap';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
@@ -7,7 +7,7 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
 import { clockIn } from '@/lib/api/attendance';
-import { formatClock, formatLongDate, mapPreviewUrl } from '@/lib/format';
+import { formatClock, formatLongDate } from '@/lib/format';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
 
 export default function ClockInScreen() {
@@ -66,11 +66,7 @@ export default function ClockInScreen() {
       <ScreenHeader title="Clock In" onBack={() => router.back()} />
       <View style={styles.mapWrap}>
         {loc ? (
-          <Image
-            source={{ uri: mapPreviewUrl(loc.latitude, loc.longitude) }}
-            style={styles.map}
-            contentFit="cover"
-          />
+          <LocationMap latitude={loc.latitude} longitude={loc.longitude} height={220} />
         ) : (
           <View style={[styles.map, styles.mapFallback]}>
             <ActivityIndicator color="#fff" />

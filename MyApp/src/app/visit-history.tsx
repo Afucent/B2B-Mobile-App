@@ -1,152 +1,238 @@
 import { router } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { useCallback, useState } from 'react';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
+import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
-import { Colors, Radius } from '@/constants/theme';
-import { formatClock, formatDate } from '@/lib/format';
-import { durationClock } from '@/lib/geo';
-import { listVisits, type VisitLog } from '@/lib/visits';
-
-type Filter = 'all' | 'week' | 'month' | 'flagged';
+import { Colors, Radius, Spacing } from '@/constants/theme';
+import { usePermissions } from '@/hooks/usePermissions';
+import { getMyVisitHistory, getVisitHistory, type FieldVisit } from '@/lib/api/visits';
+import { listUsers, type AdminUser } from '@/lib/api/users';
+import { formatClock } from '@/lib/format';
+import { displayYmdRange, ymd } from '@/lib/leaveUi';
 
 export default function VisitHistoryScreen() {
-  const [items, setItems] = useState<VisitLog[]>([]);
-  const [filter, setFilter] = useState<Filter>('all');
+  const { canView } = usePermissions();
+  const isAdmin = canView('visit_history');
+  return isAdmin ? (
+    <RequireModuleAccess module="visit_history">
+      <VisitHistoryContent admin />
+    </RequireModuleAccess>
+  ) : (
+    <VisitHistoryContent admin={false} />
+  );
+}
+
+function VisitHistoryContent({ admin }: { admin: boolean }) {
+  const [items, setItems] = useState<FieldVisit[]>([]);
+  const [employees, setEmployees] = useState<AdminUser[]>([]);
+  const [employeeId, setEmployeeId] = useState('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useFocusEffect(
     useCallback(() => {
-      void listVisits().then((rows) => setItems(rows.filter((v) => v.checkOutAt)));
-    }, []),
+      if (admin) {
+        void listUsers(0, 100)
+          .then((res) => setEmployees(res.items))
+          .catch(() => setEmployees([]));
+      }
+    }, [admin]),
   );
 
-  const filtered = useMemo(() => {
-    const now = new Date();
-    return items.filter((item) => {
-      const date = new Date(item.checkOutAt || item.checkInAt);
-      if (filter === 'flagged') return item.flagged;
-      if (filter === 'week') {
-        const start = new Date(now);
-        start.setDate(now.getDate() - 7);
-        return date >= start;
-      }
-      if (filter === 'month') {
-        return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
-      }
-      return true;
-    });
-  }, [items, filter]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = admin
+        ? await getVisitHistory({
+            employee_id: employeeId === 'all' ? undefined : employeeId,
+            from_date: fromDate || undefined,
+            to_date: toDate || undefined,
+            status: 'completed',
+          })
+        : await getMyVisitHistory({
+            from_date: fromDate || undefined,
+            to_date: toDate || undefined,
+          });
+      setItems(res.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load history');
+    } finally {
+      setLoading(false);
+    }
+  }, [admin, employeeId, fromDate, toDate]);
 
-  const avg = (() => {
-    if (!filtered.length) return '—';
-    const mins =
-      filtered.reduce((sum, item) => {
-        if (!item.checkOutAt) return sum;
-        return sum + (new Date(item.checkOutAt).getTime() - new Date(item.checkInAt).getTime()) / 60000;
-      }, 0) / filtered.length;
-    return `${Math.round(mins)}m`;
-  })();
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   return (
     <View style={styles.flex}>
-      <ScreenHeader title="Visit History" onBack={() => router.back()} />
-      <Text style={styles.sub}>Your completed dealer visits logs</Text>
-      <View style={styles.filters}>
-        {(
-          [
-            ['all', 'All'],
-            ['week', 'This Week'],
-            ['month', 'This Month'],
-            ['flagged', 'Flagged'],
-          ] as const
-        ).map(([key, label]) => (
-          <Pressable
-            key={key}
-            onPress={() => setFilter(key)}
-            style={[styles.chip, filter === key && styles.chipOn]}>
-            <Text style={[styles.chipText, filter === key && styles.chipOnText]}>{label}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <View style={styles.stats}>
-        <Text style={styles.stat}>Total  {filtered.length} visits</Text>
-        <Text style={styles.stat}>Avg duration  {avg}</Text>
-      </View>
-      <ScrollView contentContainerStyle={styles.list}>
-        {filtered.length === 0 ? (
-          <Text style={styles.empty}>No completed visits yet.</Text>
-        ) : (
-          filtered.map((item) => (
-            <View key={item.id} style={styles.card}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.when}>
-                  {formatDate(item.checkInAt)} · {formatClock(item.checkInAt)}
-                </Text>
-                <Text style={styles.name}>{item.dealerName}</Text>
-              </View>
-              <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                <View
-                  style={[
-                    styles.pill,
-                    item.flagged ? styles.flag : item.unplanned ? styles.unplanned : styles.ok,
-                  ]}>
-                  <Text
-                    style={[
-                      styles.pillText,
-                      item.flagged ? styles.flagText : item.unplanned ? styles.unplannedText : styles.okText,
-                    ]}>
-                    {item.flagged ? 'Flagged Mismatch' : item.unplanned ? 'Unplanned Complete' : 'Completed'}
-                  </Text>
-                </View>
-                <Text style={styles.dur}>{item.checkOutAt ? durationClock(item.checkInAt, item.checkOutAt) : '—'}</Text>
-              </View>
+      <ScreenHeader title="Visit history" onBack={() => router.back()} />
+      <FlatList
+        data={items}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        ListHeaderComponent={
+          <View style={styles.filters}>
+            <Text style={styles.sub}>
+              {admin ? 'Employee visit history across the organisation.' : 'Your completed dealer visits.'}
+            </Text>
+            {admin ? (
+              <ScrollChips
+                label="Employee"
+                value={employeeId}
+                onChange={setEmployeeId}
+                options={[{ id: 'all', name: 'All' }, ...employees.map((e) => ({ id: e.id, name: e.name }))]}
+              />
+            ) : null}
+            <View style={styles.dateRow}>
+              <Pressable style={styles.dateChip} onPress={() => setFromDate(ymd(new Date(Date.now() - 7 * 86400000)))}>
+                <Text style={styles.dateChipText}>Last 7 days</Text>
+              </Pressable>
+              <Pressable
+                style={styles.dateChip}
+                onPress={() => setFromDate(ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1)))}>
+                <Text style={styles.dateChipText}>This month</Text>
+              </Pressable>
+              <Pressable
+                style={styles.dateChip}
+                onPress={() => {
+                  setFromDate('');
+                  setToDate('');
+                }}>
+                <Text style={styles.dateChipText}>All</Text>
+              </Pressable>
             </View>
-          ))
+            {loading ? <Text style={styles.meta}>Loading…</Text> : null}
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+          </View>
+        }
+        ListEmptyComponent={!loading ? <Text style={styles.meta}>No visits found.</Text> : null}
+        renderItem={({ item }) => (
+          <View style={styles.row}>
+            <View style={styles.rowTop}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.name}>{item.dealer_name ?? 'Dealer'}</Text>
+                {admin ? <Text style={styles.emp}>{item.employee_name}</Text> : null}
+                <Text style={styles.subRow}>
+                  {displayYmdRange(
+                    item.scheduled_at.slice(0, 10),
+                    item.completed_at?.slice(0, 10) ?? item.scheduled_at.slice(0, 10),
+                  )}
+                  {item.completed_at ? ` · ${formatClock(item.completed_at)}` : ''}
+                </Text>
+                {item.unplanned ? <Text style={styles.tag}>Unplanned · {item.unplanned_reason}</Text> : null}
+              </View>
+              {item.photo_url ? (
+                <Image source={{ uri: item.photo_url }} style={styles.thumb} contentFit="cover" />
+              ) : (
+                <View style={styles.thumbEmpty}>
+                  <Text style={styles.thumbEmptyText}>No image</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.notesLabel}>Notes</Text>
+            <Text style={styles.notes}>{item.notes?.trim() ? item.notes : '—'}</Text>
+          </View>
         )}
-      </ScrollView>
+      />
+    </View>
+  );
+}
+
+function ScrollChips({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { id: string; name: string }[];
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={styles.filterLabel}>{label}</Text>
+      <FlatList
+        horizontal
+        data={options}
+        keyExtractor={(item) => item.id}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: 8 }}
+        renderItem={({ item }) => (
+          <Pressable
+            style={[styles.chip, value === item.id && styles.chipActive]}
+            onPress={() => onChange(item.id)}>
+            <Text style={[styles.chipText, value === item.id && styles.chipTextActive]}>{item.name}</Text>
+          </Pressable>
+        )}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
-  sub: { textAlign: 'center', color: Colors.muted, marginTop: -6, marginBottom: 8 },
-  filters: { flexDirection: 'row', paddingHorizontal: 16, gap: 8 },
+  list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: 40 },
+  filters: { gap: Spacing.sm, marginBottom: Spacing.sm },
+  sub: { color: Colors.muted, lineHeight: 20 },
+  filterLabel: { fontSize: 11, fontWeight: '700', color: Colors.muted, textTransform: 'uppercase' },
+  dateRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  dateChip: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dateChipText: { fontSize: 12, fontWeight: '600', color: Colors.heading },
   chip: {
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
     backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  chipOn: { backgroundColor: Colors.brandSoft },
-  chipText: { fontSize: 12, fontWeight: '700', color: Colors.muted },
-  chipOnText: { color: Colors.brand },
-  stats: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  stat: { color: Colors.muted, fontWeight: '600', fontSize: 12 },
-  list: { padding: 16, gap: 10, paddingBottom: 32 },
-  empty: { color: Colors.muted, marginTop: 16 },
-  card: {
+  chipActive: { backgroundColor: Colors.brand, borderColor: Colors.brand },
+  chipText: { fontSize: 12, fontWeight: '600', color: Colors.muted },
+  chipTextActive: { color: '#fff' },
+  meta: { color: Colors.muted },
+  error: { color: Colors.danger },
+  row: {
     backgroundColor: Colors.background,
-    borderRadius: Radius.lg,
-    padding: 14,
-    flexDirection: 'row',
-    gap: 10,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    gap: 6,
+    marginBottom: Spacing.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.brand,
   },
-  when: { color: Colors.muted, fontSize: 12 },
-  name: { fontWeight: '800', color: Colors.heading, marginTop: 4 },
-  pill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
-  ok: { backgroundColor: Colors.visitedBg },
-  flag: { backgroundColor: Colors.pendingBg },
-  unplanned: { backgroundColor: Colors.surfaceWarm },
-  pillText: { fontSize: 10, fontWeight: '700' },
-  okText: { color: Colors.visitedText },
-  flagText: { color: Colors.pendingText },
-  unplannedText: { color: Colors.accentCoral },
-  dur: { color: Colors.muted, fontSize: 12, fontWeight: '700' },
+  rowTop: { flexDirection: 'row', gap: 12 },
+  name: { fontWeight: '800', color: Colors.heading, fontSize: 15 },
+  emp: { color: Colors.brand, fontWeight: '700' },
+  subRow: { color: Colors.muted, fontSize: 12 },
+  tag: { color: Colors.pendingText, fontSize: 11, fontWeight: '700' },
+  notesLabel: { marginTop: 4, fontSize: 11, fontWeight: '700', color: Colors.muted, textTransform: 'uppercase' },
+  notes: { color: Colors.text, fontSize: 13 },
+  thumb: { width: 64, height: 64, borderRadius: Radius.md, backgroundColor: Colors.borderLight },
+  thumbEmpty: {
+    width: 64,
+    height: 64,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.borderLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thumbEmptyText: { fontSize: 10, color: Colors.muted, textAlign: 'center' },
 });

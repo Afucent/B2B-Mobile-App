@@ -56,7 +56,7 @@ export default function LoginScreen() {
         setErrors({ password: 'Incorrect password' });
       } else if (statusCode === 403) {
         setErrors({
-          form: err instanceof Error ? err.message : 'This app is for organization employees only.',
+          form: err instanceof Error ? err.message : 'You do not have mobile app access.',
         });
       } else {
         setErrors({

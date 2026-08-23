@@ -8,10 +8,6 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
 import { listDealers, type Dealer } from '@/lib/api/dealers';
-import { getFieldOperationsSettings } from '@/lib/api/org';
-import { haversineMeters } from '@/lib/geo';
-import { geocodeAddress, requestLocation } from '@/lib/location';
-import { routeForLocationAction } from '@/lib/locationGate';
 import { UNPLANNED_REASONS } from '@/lib/visits';
 
 export default function UnplannedVisitScreen() {
@@ -32,39 +28,15 @@ export default function UnplannedVisitScreen() {
   async function start() {
     if (!selected || !reason) return;
     setLoading(true);
-    const settings = await getFieldOperationsSettings().catch(() => null);
-    const radius = settings?.dealer_geofence_radius_m ?? 500;
-    let distance = 0;
-    let inside = '0';
-    try {
-      const loc = await requestLocation();
-      const geo = await geocodeAddress(selected.address);
-      if (geo) {
-        distance = Math.round(haversineMeters(loc.latitude, loc.longitude, geo.latitude, geo.longitude));
-        inside = distance <= radius ? '1' : '0';
-      }
-    } catch {
-      const block = await routeForLocationAction(
-        `/visit-check-in?id=${selected.id}&unplanned=1&reason=${encodeURIComponent(reason)}`,
-      );
-      setLoading(false);
-      if (block) {
-        router.push(block);
-        return;
-      }
-    }
-    setLoading(false);
     router.push({
-      pathname: '/visit-check-in',
+      pathname: '/visit-complete',
       params: {
-        id: selected.id,
+        dealerId: selected.id,
+        reason: reason ?? '',
         unplanned: '1',
-        reason,
-        distance: String(distance),
-        radius: String(radius),
-        inside,
       },
     });
+    setLoading(false);
   }
 
   return (
@@ -125,7 +97,7 @@ export default function UnplannedVisitScreen() {
 
         <Text style={styles.note}>Note: Unplanned visits are logged and instantly visible to your regional sales manager.</Text>
         <PrimaryButton
-          label="Start Visit"
+          label="Submit unplanned visit"
           loading={loading}
           disabled={!selected || !reason}
           onPress={() => void start()}
