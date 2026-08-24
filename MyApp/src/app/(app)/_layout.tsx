@@ -42,7 +42,7 @@ export default function AppTabsLayout() {
       <Tabs.Screen name="profile" options={{ title: 'Profile' }} />
       {/* Legacy / hidden routes */}
       <Tabs.Screen name="leaves" options={{ href: null }} />
-      <Tabs.Screen name="visits" options={{ href: null }} />
+      <Tabs.Screen name="visits" options={{ href: null, title: 'Visits' }} />
       <Tabs.Screen name="calendar" options={{ href: null }} />
     </Tabs>
   );

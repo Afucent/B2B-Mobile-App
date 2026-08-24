@@ -49,15 +49,17 @@ export default function AdminLiveTrackingScreen() {
         <LocationMap
           latitude={centerLat}
           longitude={centerLon}
-          height={260}
-          zoom={markers.length > 1 ? 11 : 14}
+          height={markers.length > 1 ? 320 : 260}
+          zoom={markers.length > 3 ? 5 : markers.length > 1 ? 11 : 14}
           markers={markers}
           onMarkerPress={(id) => setFocusId(id)}
         />
         <View style={styles.body}>
           {loading ? <Text style={styles.meta}>Loading…</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Text style={styles.section}>Field team ({items.length})</Text>
+          <Text style={styles.section}>
+            {markers.length > 1 ? 'All employees on map' : 'Field team'} ({items.length})
+          </Text>
           <FlatList
             data={items}
             keyExtractor={(item) => item.employee_id}

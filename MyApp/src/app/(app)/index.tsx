@@ -18,6 +18,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const { isOrgAdmin, showMyAttendanceLeave, hasAnyAdminRead, has, canView } = usePermissions();
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const name = user?.name ?? 'there';
 
   const showDashboard = canViewDashboard({
@@ -31,6 +32,7 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
+    setRefreshKey((k) => k + 1);
     await new Promise((r) => setTimeout(r, 400));
     setRefreshing(false);
   }, []);
@@ -70,7 +72,7 @@ export default function HomeScreen() {
         </View>
 
         {showDashboard ? (
-          <DashboardStats />
+          <DashboardStats refreshKey={refreshKey} />
         ) : (
           <View style={styles.card}>
             <Text style={styles.welcomeTitle}>Welcome back</Text>

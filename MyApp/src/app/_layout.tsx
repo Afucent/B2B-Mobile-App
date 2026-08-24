@@ -41,7 +41,6 @@ export default function RootLayout() {
           <Stack.Screen name="leave-balance" />
           <Stack.Screen name="leave-management" />
           <Stack.Screen name="visit-assign" />
-          <Stack.Screen name="visit-complete" />
         </Stack>
       </AuthProvider>
     </GestureHandlerRootView>

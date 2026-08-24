@@ -83,3 +83,19 @@ export type DealerAssignmentRow = {
 export function listDealerAssignments() {
   return apiRequest<DealerAssignmentRow[]>('/users/assignments/dealers');
 }
+
+export type UserSummary = {
+  total_users: number;
+  total_active: number;
+  total_inactive: number;
+  pending_credentials: number;
+};
+
+export function getUserSummary() {
+  return apiRequest<UserSummary>('/users/summary');
+}
+
+export function getUserFilterOptions() {
+  return apiRequest<{ cities: string[]; areas: string[] }>('/users/filter-options');
+}
+

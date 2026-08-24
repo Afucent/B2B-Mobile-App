@@ -96,16 +96,6 @@ const COMMAND_LINKS: AdminNavLink[] = [
     href: '/(admin)/dashboard',
     module: 'dashboard',
   },
-  {
-    title: 'Geography',
-    href: '/(admin)/geography',
-    module: 'geography',
-  },
-  {
-    title: 'Dealers',
-    href: '/(admin)/dealers',
-    module: 'dealers',
-  },
 ];
 
 function filterLinks(links: AdminNavLink[], ctx: AdminNavContext): AdminNavLink[] {

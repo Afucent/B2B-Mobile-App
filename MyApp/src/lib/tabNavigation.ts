@@ -89,16 +89,24 @@ const LEAVES_ADMIN_LINKS: TabNavLink[] = [
 const FIELD_LINKS: TabNavLink[] = [
   {
     title: 'Visit assign',
-    subtitle: 'Schedule dealer visits for employees',
+    subtitle: 'Assign dealer visits to employees',
     href: '/visit-assign',
     module: 'visit_assign',
     visible: (ctx) => ctx.canView('visit_assign') || ctx.canCreate('visit_assign'),
+  },
+  {
+    title: 'Visits',
+    subtitle: 'Today’s assigned visits — complete with notes & photo',
+    href: '/(app)/visits',
+    module: 'field_visits',
+    visible: () => true,
   },
   {
     title: 'Visit history',
     subtitle: 'Completed visits by employee',
     href: '/visit-history',
     module: 'visit_history',
+    visible: () => true,
   },
   {
     title: 'Live tracking',
@@ -111,18 +119,6 @@ const FIELD_LINKS: TabNavLink[] = [
     subtitle: 'Shift windows & geofence',
     href: '/(admin)/field-ops-settings',
     module: 'organization',
-  },
-  {
-    title: 'Geography',
-    subtitle: 'States, cities, regions, areas',
-    href: '/(admin)/geography',
-    module: 'geography',
-  },
-  {
-    title: 'Dealers',
-    subtitle: 'Dealer master list',
-    href: '/(admin)/dealers',
-    module: 'dealers',
   },
 ];
 
@@ -170,8 +166,9 @@ export function getVisibleAppTabs(ctx: TabVisibilityContext): AppTabName[] {
   const showField =
     showClock ||
     ctx.canView('live_location') ||
-    ctx.canView('geography') ||
-    ctx.canView('dealers') ||
+    ctx.canView('visit_assign') ||
+    ctx.canView('visit_history') ||
+    ctx.canView('field_visits') ||
     ctx.canView('organization');
 
   if (showClock) tabs.push('clock');

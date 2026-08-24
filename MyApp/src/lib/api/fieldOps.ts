@@ -1,31 +1,48 @@
 import { apiRequest } from '@/lib/api/client';
 
 export interface AttendanceSummary {
-  present?: number;
-  absent?: number;
-  on_leave?: number;
+  date?: string;
+  present: number;
+  on_leave: number;
+  absent: number;
+  total_users?: number;
+  /** @deprecated backend may omit; prefer total_users */
   total_employees?: number;
   clocked_in?: number;
 }
 
+export type LiveTrackingStatus = 'active' | 'in_transit' | 'idle' | 'gps_off' | 'offline';
+
 export interface LiveEmployeeRow {
   employee_id: string;
   employee_name: string;
+  employee_initials?: string;
   designation?: string | null;
-  status?: string;
+  role?: string | null;
+  city?: string | null;
+  status?: LiveTrackingStatus | string;
   last_captured_at?: string | null;
   last_latitude?: number | null;
   last_longitude?: number | null;
   last_address?: string | null;
   clock_in_time?: string | null;
+  last_ping_label?: string | null;
 }
 
-export function getAttendanceDashboardSummary() {
-  return apiRequest<AttendanceSummary>('/attendance/dashboard-summary');
+export interface LiveTrackingPanel {
+  items: LiveEmployeeRow[];
+  stats?: Record<string, number>;
+  gps_ping_interval_minutes?: number;
+  gps_off_threshold_minutes?: number;
+}
+
+export function getAttendanceDashboardSummary(date?: string) {
+  const q = date ? `?date=${encodeURIComponent(date)}` : '';
+  return apiRequest<AttendanceSummary>(`/attendance/dashboard-summary${q}`);
 }
 
 export function getLiveTrackingPanel() {
-  return apiRequest<{ items: LiveEmployeeRow[]; stats?: Record<string, number> }>('/attendance/panel');
+  return apiRequest<LiveTrackingPanel>('/attendance/panel');
 }
 
 export function getEmployeeLiveDetail(employeeId: string) {

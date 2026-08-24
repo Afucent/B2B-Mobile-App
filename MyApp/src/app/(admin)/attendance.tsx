@@ -27,7 +27,7 @@ export default function AdminAttendanceScreen() {
     { label: 'Present', value: summary?.present },
     { label: 'Absent', value: summary?.absent },
     { label: 'On leave', value: summary?.on_leave },
-    { label: 'Clocked in', value: summary?.clocked_in },
+    { label: 'Total users', value: summary?.total_users },
   ];
 
   return (

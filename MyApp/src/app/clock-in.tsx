@@ -6,7 +6,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
-import { clockIn } from '@/lib/api/attendance';
+import { clockIn, getTodayStatus } from '@/lib/api/attendance';
 import { formatClock, formatLongDate } from '@/lib/format';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
 
@@ -19,6 +19,15 @@ export default function ClockInScreen() {
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      const status = await getTodayStatus().catch(() => null);
+      if (status?.is_clocked_in) {
+        router.replace('/(app)/clock');
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -55,7 +64,12 @@ export default function ClockInScreen() {
         },
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Clock-in failed.');
+      const message = err instanceof Error ? err.message : 'Clock-in failed.';
+      if (message.toLowerCase().includes('already clocked in')) {
+        router.replace('/(app)/clock');
+        return;
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }
