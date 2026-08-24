@@ -18,6 +18,9 @@ export interface AttendanceRecord {
   early_flag: boolean;
   geofence_valid: boolean | null;
   status: string;
+  location_tracking_enabled: boolean;
+  start_location_label: string | null;
+  end_location_label: string | null;
 }
 
 export interface TodayStatus {
@@ -43,6 +46,9 @@ export interface EmployeeLiveDetail {
   status: string;
   status_label: string;
   clock_in_time: string | null;
+  last_ping_label?: string | null;
+  last_ping_at?: string | null;
+  late_minutes?: number | null;
   working_duration_label: string | null;
   distance_today_km: number;
   visits_completed: number;
@@ -84,12 +90,34 @@ export function pingLocation(latitude: number, longitude: number, accuracy?: num
   });
 }
 
+export function startLocation(latitude: number, longitude: number, startLocationLabel?: string) {
+  return apiRequest<AttendanceRecord>('/attendance/location/start', {
+    method: 'POST',
+    body: {
+      latitude,
+      longitude,
+      start_location_label: startLocationLabel,
+    },
+  });
+}
+
+export function endLocation(latitude: number, longitude: number, endLocationLabel?: string) {
+  return apiRequest<AttendanceRecord>('/attendance/location/end', {
+    method: 'POST',
+    body: {
+      latitude,
+      longitude,
+      end_location_label: endLocationLabel,
+    },
+  });
+}
+
 export function getEmployeeLiveDetail(employeeId: string) {
   return apiRequest<EmployeeLiveDetail>(`/attendance/live/${employeeId}`);
 }
 
-export function getMyRecords(month: string) {
-  return apiRequest<{ month: string; items: AttendanceRecord[] }>(
-    `/attendance/my-records?month=${month}`,
+export function getMyHistory(limit = 30) {
+  return apiRequest<{ items: AttendanceRecord[]; total: number }>(
+    `/attendance/my-history?limit=${limit}`,
   );
 }

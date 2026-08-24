@@ -78,12 +78,12 @@ export function listLeaveRequestsAdmin(status?: string) {
 }
 
 export function approveLeaveRequest(id: string) {
-  return apiRequest<LeaveRequestAdmin>(`/leave-requests/${id}/approve`, { method: 'POST' });
+  return apiRequest<LeaveRequestAdmin>(`/leave-requests/${id}/approve`, { method: 'PATCH' });
 }
 
 export function rejectLeaveRequest(id: string, reason?: string) {
   return apiRequest<LeaveRequestAdmin>(`/leave-requests/${id}/reject`, {
-    method: 'POST',
+    method: 'PATCH',
     body: { reason: reason ?? null },
   });
 }

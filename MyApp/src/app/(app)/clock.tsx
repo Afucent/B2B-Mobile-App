@@ -11,10 +11,12 @@ import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
+  endLocation,
   getEmployeeLiveDetail,
-  getMyRecords,
+  getMyHistory,
   getTodayStatus,
   pingLocation,
+  startLocation,
   type AttendanceRecord,
   type EmployeeLiveDetail,
   type TodayStatus,
@@ -27,7 +29,6 @@ import {
   formatClock,
   formatDate,
   formatKm,
-  monthKey,
 } from '@/lib/format';
 import { displayYmdRange, leaveStatusMeta } from '@/lib/leaveUi';
 import { requestLocation } from '@/lib/location';
@@ -47,7 +48,8 @@ export default function ClockScreen() {
 function ClockContent() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const { isOrgAdmin, showMyAttendanceLeave, hasAnyAdminRead, has, canView } = usePermissions();
+  const { isOrgAdmin, showMyAttendanceLeave, hasAnyAdminRead, has, canView, canCreate } =
+    usePermissions();
   const permCtx = {
     isOrgAdmin,
     showMyAttendanceLeave,
@@ -63,6 +65,16 @@ function ClockContent() {
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [now, setNow] = useState(new Date());
   const [missedOpen, setMissedOpen] = useState(false);
+  const [settings, setSettings] = useState<Awaited<ReturnType<typeof getFieldOperationsSettings>> | null>(
+    null,
+  );
+  const [actionLoading, setActionLoading] = useState<'start' | 'end' | null>(null);
+  const [actionError, setActionError] = useState('');
+  const [actionMessage, setActionMessage] = useState('');
+  const canTrack =
+    canCreate('user_tracking') ||
+    has('live_location', 'create') ||
+    has('live_location', 'track');
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -70,6 +82,8 @@ function ClockContent() {
     setToday(status);
     const liveDetail = await getEmployeeLiveDetail(user.id).catch(() => null);
     setLive(liveDetail);
+    const orgSettings = await getFieldOperationsSettings().catch(() => null);
+    setSettings(orgSettings);
     const balance = await getLeaveBalance().catch(() => null);
     setLeaveDays(balance?.items.reduce((sum, item) => sum + (item.balance || 0), 0) ?? 0);
     const mine = await getMyLeaveRequests().catch(() => []);
@@ -81,19 +95,18 @@ function ClockContent() {
     } else if (existing) {
       setMissedOpen(true);
     } else {
-      const records = await getMyRecords(monthKey(new Date())).catch(() => null);
+      const records = await getMyHistory(30).catch(() => null);
       const autoClosed = records?.items.find((item) => {
         if (!item.clock_out_time) return false;
         const hour = new Date(item.clock_out_time).getHours();
         return hour >= 21 || item.status === 'auto_closed';
       });
       if (autoClosed) {
-        const settings = await getFieldOperationsSettings().catch(() => null);
         await saveMissedClockOut({
           id: autoClosed.id,
           date: String(autoClosed.date),
-          expectedOut: settings?.shift_end_time
-            ? formatClock(new Date(`1970-01-01T${settings.shift_end_time}:00`).toISOString())
+          expectedOut: orgSettings?.shift_end_time
+            ? formatClock(new Date(`1970-01-01T${orgSettings.shift_end_time}:00`).toISOString())
             : '06:00 PM',
           autoOut: formatClock(autoClosed.clock_out_time),
           status: 'FLAGGED_REVIEW',
@@ -119,6 +132,7 @@ function ClockContent() {
   useEffect(() => {
     if (!today?.tracking_active) return;
     let cancelled = false;
+    const intervalMinutes = Math.max(settings?.gps_ping_interval_minutes ?? 10, 10);
     async function ping() {
       try {
         const loc = await requestLocation();
@@ -128,20 +142,46 @@ function ClockContent() {
       }
     }
     void ping();
-    const timer = setInterval(() => void ping(), 10 * 60 * 1000);
+    const timer = setInterval(() => void ping(), intervalMinutes * 60 * 1000);
     return () => {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [today?.tracking_active]);
+  }, [settings?.gps_ping_interval_minutes, today?.tracking_active]);
 
   async function goWithLocation(next: '/clock-in' | '/clock-out') {
     const block = await routeForLocationAction(next);
     router.push(block ?? next);
   }
 
+  async function updateTracking(action: 'start' | 'end') {
+    setActionLoading(action);
+    setActionError('');
+    setActionMessage('');
+    try {
+      const loc = await requestLocation();
+      if (action === 'start') {
+        await startLocation(loc.latitude, loc.longitude);
+        setActionMessage('Live tracking started.');
+      } else {
+        await endLocation(loc.latitude, loc.longitude);
+        setActionMessage('Live tracking ended.');
+      }
+      await load();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Unable to update live tracking.');
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   const onDuty = Boolean(today?.is_clocked_in);
   const record: AttendanceRecord | null = today?.record ?? null;
+  const trackingActive = Boolean(today?.tracking_active);
+  const shiftLabel =
+    settings?.shift_start_time && settings?.shift_end_time
+      ? `${formatClock(new Date(`1970-01-01T${settings.shift_start_time}:00`).toISOString())}–${formatClock(new Date(`1970-01-01T${settings.shift_end_time}:00`).toISOString())}`
+      : 'Shift settings unavailable';
 
   return (
     <ScrollView
@@ -150,9 +190,15 @@ function ClockContent() {
       <Text style={styles.screenTitle}>Clock & My Leave</Text>
 
       {onDuty ? (
-        <View style={styles.tracking}>
-          <Ionicons name="navigate" size={14} color={Colors.trackingText} />
-          <Text style={styles.trackingText}>TRACKING ACTIVE · GPS ONLINE</Text>
+        <View style={[styles.tracking, !trackingActive && styles.trackingMuted]}>
+          <Ionicons
+            name={trackingActive ? 'navigate' : 'pause-circle-outline'}
+            size={14}
+            color={trackingActive ? Colors.trackingText : Colors.muted}
+          />
+          <Text style={[styles.trackingText, !trackingActive && styles.trackingTextMuted]}>
+            {trackingActive ? 'TRACKING ACTIVE · GPS ONLINE' : 'CLOCKED IN · TRACKING OFF'}
+          </Text>
         </View>
       ) : null}
 
@@ -181,15 +227,49 @@ function ClockContent() {
                 <Text style={styles.metricValue}>{formatKm(live?.distance_today_km)}</Text>
               </View>
             </View>
-            <PrimaryButton label="Clock Out" onPress={() => void goWithLocation('/clock-out')} />
+            <View style={styles.metaCard}>
+              <Text style={styles.metricLabel}>Live tracking</Text>
+              <Text style={styles.metaValue}>
+                {trackingActive ? `On${live?.last_ping_label ? ` · Last ping ${live.last_ping_label}` : ''}` : 'Off'}
+              </Text>
+            </View>
+            {canTrack ? (
+              <View style={styles.actionRow}>
+                <PrimaryButton
+                  label={trackingActive ? 'End Tracking' : 'Start Tracking'}
+                  onPress={() => void updateTracking(trackingActive ? 'end' : 'start')}
+                  loading={actionLoading === (trackingActive ? 'end' : 'start')}
+                />
+                <Pressable style={styles.secondaryButton} onPress={() => void goWithLocation('/clock-out')}>
+                  <Text style={styles.secondaryButtonText}>Clock Out</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <PrimaryButton label="Clock Out" onPress={() => void goWithLocation('/clock-out')} />
+            )}
           </>
         ) : (
           <>
             <Text style={styles.shiftLabel}>Shift schedule for today</Text>
-            <Text style={styles.shiftValue}>{formatDate(new Date())} · 09:00–18:00</Text>
+            <Text style={styles.shiftValue}>
+              {formatDate(new Date())} · {shiftLabel}
+            </Text>
             <PrimaryButton label="Clock In" onPress={() => void goWithLocation('/clock-in')} />
+            {canTrack ? (
+              <>
+                <Pressable style={[styles.secondaryButton, styles.disabledButton]} disabled>
+                  <Text style={styles.secondaryButtonText}>Start Tracking</Text>
+                </Pressable>
+                <Text style={styles.hint}>
+                  Clock in first. Start Tracking then records live location, duration, and distance.
+                </Text>
+              </>
+            ) : null}
           </>
         )}
+
+        {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
+        {actionMessage ? <Text style={styles.success}>{actionMessage}</Text> : null}
       </View>
 
       {missedOpen ? (
@@ -267,7 +347,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: Radius.md,
   },
+  trackingMuted: { backgroundColor: Colors.borderLight },
   trackingText: { color: Colors.trackingText, fontSize: 11, fontWeight: '800' },
+  trackingTextMuted: { color: Colors.muted },
   card: {
     backgroundColor: Colors.background,
     borderRadius: Radius.lg,
@@ -287,6 +369,26 @@ const styles = StyleSheet.create({
   metricValueLg: { fontSize: 28, fontWeight: '800', color: Colors.heading },
   metricValue: { fontSize: 20, fontWeight: '800', color: Colors.heading },
   metricSplit: { flexDirection: 'row', justifyContent: 'space-between' },
+  metaCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    padding: 12,
+    gap: 4,
+  },
+  metaValue: { color: Colors.heading, fontWeight: '700' },
+  actionRow: { gap: 10 },
+  secondaryButton: {
+    minHeight: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.background,
+    paddingHorizontal: 16,
+  },
+  secondaryButtonText: { color: Colors.heading, fontSize: 16, fontWeight: '700' },
+  disabledButton: { opacity: 0.45 },
   missed: {
     backgroundColor: Colors.pendingBg,
     borderRadius: Radius.lg,
@@ -334,8 +436,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   applyText: { color: Colors.brand, fontWeight: '800' },
+  hint: { color: Colors.muted, fontSize: 12, lineHeight: 18 },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.heading, marginTop: 4 },
   meta: { color: Colors.muted },
+  error: { color: Colors.danger, fontSize: 13 },
+  success: { color: Colors.success, fontSize: 13 },
   leaveRow: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md,

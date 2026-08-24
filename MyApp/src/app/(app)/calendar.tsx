@@ -9,7 +9,7 @@ import { OutlineButton } from '@/components/ui/OutlineButton';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { getMyRecords, type AttendanceRecord } from '@/lib/api/attendance';
+import { getMyHistory, type AttendanceRecord } from '@/lib/api/attendance';
 import { getMyLeaveRequests, type LeaveRequest } from '@/lib/api/leave';
 import { formatClock, hoursToLabel, monthKey } from '@/lib/format';
 import { displayYmd } from '@/lib/leaveUi';
@@ -45,7 +45,7 @@ export default function AttendanceCalendarScreen() {
 
   const load = useCallback(async () => {
     const [month, mine] = await Promise.all([
-      getMyRecords(key).catch(() => ({ items: [] as AttendanceRecord[] })),
+      getMyHistory(90).catch(() => ({ items: [] as AttendanceRecord[] })),
       getMyLeaveRequests().catch(() => [] as LeaveRequest[]),
     ]);
     setRecords(month.items);

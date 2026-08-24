@@ -28,6 +28,16 @@ export function assignVisit(data: {
   return apiRequest<FieldVisit>('/visits/assign', { method: 'POST', body: data });
 }
 
+export function assignVisitsBatch(data: {
+  employee_id: string;
+  days: Array<{ date: string; dealer_ids: string[] }>;
+}) {
+  return apiRequest<{ items: FieldVisit[]; total: number }>('/visits/assign-batch', {
+    method: 'POST',
+    body: data,
+  });
+}
+
 export function getMyVisits(day?: string) {
   const q = day ? `?day=${encodeURIComponent(day)}` : '';
   return apiRequest<{ items: FieldVisit[]; total: number }>(`/visits/my${q}`);
