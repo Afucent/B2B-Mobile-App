@@ -8,7 +8,7 @@ import { DateField } from '@/components/ui/DateField';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { getMyVisits, type FieldVisit } from '@/lib/api/visits';
-import { formatClock, formatDate } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 import { parseYmd, ymd } from '@/lib/leaveUi';
 
 function shiftDay(day: string, delta: number) {
@@ -43,8 +43,7 @@ export default function VisitsScreen() {
       <ScreenHeader title="Visits" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.sub}>
-          Select a date to see that day's visits. Pending visits show here — completed ones are
-          in Visit history.
+          Tap a dealer to see location, then Check-in / Check-out. Completed visits are in history.
         </Text>
 
         <View style={styles.dateBar}>
@@ -83,31 +82,24 @@ export default function VisitsScreen() {
           <Text style={styles.meta}>No pending visits for {formatDate(parseYmd(day))}.</Text>
         ) : null}
 
-        {pending.map((visit, index) => (
+        {pending.map((visit) => (
           <Pressable
             key={visit.id}
             style={styles.row}
             onPress={() =>
               router.push({
-                pathname: '/visit-complete',
+                pathname: '/visit-detail',
                 params: {
                   visitId: visit.id,
                   dealerName: visit.dealer_name ?? 'Dealer',
-                  dealerAddress: visit.dealer_address ?? '',
-                  scheduledAt: visit.scheduled_at,
+                  checkedIn: visit.reached_at ? '1' : '0',
+                  reachedAt: visit.reached_at ?? '',
+                  day,
                 },
               })
             }>
-            <Text style={styles.index}>{index + 1}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.name}>{visit.dealer_name ?? 'Dealer'}</Text>
-              <Text style={styles.addr} numberOfLines={1}>
-                {visit.dealer_address ?? '—'} · {formatClock(visit.scheduled_at)}
-              </Text>
-            </View>
-            <View style={styles.pill}>
-              <Text style={styles.pillText}>Check-in</Text>
-            </View>
+            <Text style={styles.name}>{visit.dealer_name ?? 'Dealer'}</Text>
+            <Ionicons name="chevron-forward" size={18} color={Colors.muted} />
           </Pressable>
         ))}
       </ScrollView>
@@ -130,7 +122,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 0,
   },
   todayChip: {
     alignSelf: 'flex-start',
@@ -152,19 +143,12 @@ const styles = StyleSheet.create({
   row: {
     backgroundColor: Colors.background,
     borderRadius: Radius.lg,
-    padding: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 10,
   },
-  index: { width: 18, color: Colors.brand, fontWeight: '800' },
-  name: { fontWeight: '700', color: Colors.heading },
-  addr: { color: Colors.muted, fontSize: 12, marginTop: 2 },
-  pill: {
-    backgroundColor: Colors.brandSoft,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  pillText: { color: Colors.brand, fontWeight: '800', fontSize: 11 },
+  name: { fontWeight: '800', color: Colors.heading, fontSize: 16, flex: 1 },
 });

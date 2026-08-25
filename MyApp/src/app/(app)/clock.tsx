@@ -11,7 +11,6 @@ import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
-  endLocation,
   getMyHistory,
   getTodayStatus,
   type AttendanceRecord,
@@ -22,7 +21,6 @@ import { getFieldOperationsSettings } from '@/lib/api/org';
 import { employeeCode, formatClock, formatDate } from '@/lib/format';
 import { displayYmdRange, leaveStatusMeta } from '@/lib/leaveUi';
 import { routeForLocationAction } from '@/lib/locationGate';
-import { requestLocation } from '@/lib/location';
 import { isFieldTrackingEnabled } from '@/lib/permissions';
 import { canAccessLeaveManagement } from '@/lib/tabNavigation';
 import { getMissedClockOut, saveMissedClockOut } from '@/lib/visits';
@@ -56,8 +54,6 @@ function ClockContent() {
   const [settings, setSettings] = useState<Awaited<
     ReturnType<typeof getFieldOperationsSettings>
   > | null>(null);
-  const [trackingBusy, setTrackingBusy] = useState(false);
-  const [trackingError, setTrackingError] = useState('');
 
   const canTrack =
     canCreate('user_tracking') ||
@@ -123,21 +119,8 @@ function ClockContent() {
     router.push(block ?? next);
   }
 
-  async function onTrackingPress() {
-    if (trackingActive) {
-      setTrackingBusy(true);
-      setTrackingError('');
-      try {
-        const loc = await requestLocation();
-        await endLocation(loc.latitude, loc.longitude);
-        await load();
-      } catch (err) {
-        setTrackingError(err instanceof Error ? err.message : 'Unable to end tracking.');
-      } finally {
-        setTrackingBusy(false);
-      }
-      return;
-    }
+  async function onOpenTracking() {
+    if (!onDuty) return;
     await goWithLocation('/start-tracking');
   }
 
@@ -174,14 +157,14 @@ function ClockContent() {
             <Text style={styles.metricLabel}>Clocked in since</Text>
             <Text style={styles.metricValueLg}>{formatClock(record.clock_in_time)}</Text>
             <Text style={styles.hint}>
-              Attendance is already marked. Start Tracking opens the map and begins live location.
+              Attendance is already marked. Open Start Tracking to open the map and begin live
+              location.
             </Text>
             {canTrack ? (
               <View style={styles.actionRow}>
                 <PrimaryButton
-                  label={trackingActive ? 'End Tracking' : 'Start Tracking'}
-                  onPress={() => void onTrackingPress()}
-                  loading={trackingBusy}
+                  label={trackingActive ? 'Open End Tracking' : 'Open Start Tracking'}
+                  onPress={() => void onOpenTracking()}
                 />
                 <Pressable
                   style={styles.secondaryButton}
@@ -192,7 +175,6 @@ function ClockContent() {
             ) : (
               <PrimaryButton label="Clock Out" onPress={() => void goWithLocation('/clock-out')} />
             )}
-            {trackingError ? <Text style={styles.trackingError}>{trackingError}</Text> : null}
           </>
         ) : (
           <>
@@ -202,10 +184,17 @@ function ClockContent() {
             </Text>
             <PrimaryButton label="Clock In" onPress={() => void goWithLocation('/clock-in')} />
             {canTrack ? (
-              <Text style={styles.hint}>
-                Clock in marks attendance only. After that, Start Tracking shows the map and live
-                location.
-              </Text>
+              <>
+                <PrimaryButton
+                  label="Open Start Tracking"
+                  onPress={() => undefined}
+                  disabled
+                />
+                <Text style={styles.hint}>
+                  Clock in marks attendance only. After clock-in, Open Start Tracking becomes
+                  available for live location.
+                </Text>
+              </>
             ) : null}
           </>
         )}
@@ -366,7 +355,6 @@ const styles = StyleSheet.create({
   },
   applyText: { color: Colors.brand, fontWeight: '800' },
   hint: { color: Colors.muted, fontSize: 12, lineHeight: 18 },
-  trackingError: { color: Colors.danger, fontSize: 13 },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.heading, marginTop: 4 },
   meta: { color: Colors.muted },
   leaveRow: {

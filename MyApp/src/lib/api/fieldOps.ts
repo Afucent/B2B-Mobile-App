@@ -17,6 +17,7 @@ export interface LiveEmployeeRow {
   employee_id: string;
   employee_name: string;
   employee_initials?: string;
+  avatar_url?: string | null;
   designation?: string | null;
   role?: string | null;
   city?: string | null;

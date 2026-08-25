@@ -258,27 +258,25 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
               onChange={setCityFilter}
             />
           ) : null}
+          <LocationMap
+            latitude={center.latitude}
+            longitude={center.longitude}
+            height={260}
+            zoom={markers.length > 3 ? 5 : markers.length > 1 ? 11 : 14}
+            markers={markers}
+            onMarkerPress={(id) =>
+              router.push({
+                pathname: '/(admin)/live-tracking/[employeeId]',
+                params: { employeeId: id },
+              })
+            }
+          />
           {markers.length === 0 ? (
-            <View style={styles.mapEmpty}>
-              <Text style={styles.meta}>
-                No live clock-ins{cityFilter !== 'all' ? ' in this city' : ''}.
-              </Text>
-            </View>
-          ) : (
-            <LocationMap
-              latitude={center.latitude}
-              longitude={center.longitude}
-              height={260}
-              zoom={markers.length > 3 ? 5 : markers.length > 1 ? 11 : 14}
-              markers={markers}
-              onMarkerPress={(id) =>
-                router.push({
-                  pathname: '/(admin)/live-tracking/[employeeId]',
-                  params: { employeeId: id },
-                })
-              }
-            />
-          )}
+            <Text style={styles.meta}>
+              No one is sharing live location yet
+              {cityFilter !== 'all' ? ' in this city' : ''}. World map shown until tracking starts.
+            </Text>
+          ) : null}
           <LiveLegend items={mapItems} />
         </View>
       ) : null}
@@ -523,13 +521,6 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: Colors.brand, borderColor: Colors.brand },
   chipText: { fontSize: 12, fontWeight: '600', color: Colors.muted },
   chipTextActive: { color: '#fff' },
-  mapEmpty: {
-    height: 160,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-  },
   liveList: { gap: 6 },
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
   statusDot: { width: 10, height: 10, borderRadius: 5 },

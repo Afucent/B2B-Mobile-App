@@ -26,7 +26,7 @@ export default function ClockInConfirmedScreen() {
           <Row label="Shift status:" value="Attendance marked" valueColor={Colors.brand} />
         </View>
         <Text style={styles.hint}>
-          Live location is not started yet. Use Start Tracking from the Clock tab to open the map.
+          Live location is not started yet. Use Open Start Tracking from the Clock tab to open the map.
         </Text>
       </View>
       <View style={styles.footer}>

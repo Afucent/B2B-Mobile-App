@@ -13,12 +13,14 @@ import { formatClock } from '@/lib/format';
 type LiveDetail = {
   employee_id?: string;
   employee_name?: string;
+  employee_initials?: string;
+  avatar_url?: string | null;
   designation?: string | null;
   status?: string | null;
-  last_latitude?: number | null;
-  last_longitude?: number | null;
-  last_address?: string | null;
-  last_captured_at?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+  last_ping_at?: string | null;
   clock_in_time?: string | null;
 };
 
@@ -39,8 +41,8 @@ export default function AdminLiveEmployeeScreen() {
     }, [employeeId]),
   );
 
-  const lat = data?.last_latitude ?? null;
-  const lon = data?.last_longitude ?? null;
+  const lat = data?.latitude ?? null;
+  const lon = data?.longitude ?? null;
   const hasMap = lat != null && lon != null;
 
   return (
@@ -62,6 +64,8 @@ export default function AdminLiveEmployeeScreen() {
                 latitude: lat,
                 longitude: lon,
                 label: data?.employee_name ?? 'Employee',
+                initials: data?.employee_initials,
+                avatarUrl: data?.avatar_url,
               },
             ]}
           />
@@ -78,9 +82,9 @@ export default function AdminLiveEmployeeScreen() {
             <Row label="Clock in" value={data?.clock_in_time ? formatClock(data.clock_in_time) : '—'} />
             <Row
               label="Last update"
-              value={data?.last_captured_at ? formatClock(data.last_captured_at) : '—'}
+              value={data?.last_ping_at ? formatClock(data.last_ping_at) : '—'}
             />
-            <Row label="Address" value={data?.last_address ?? '—'} last />
+            <Row label="Address" value={data?.address ?? '—'} last />
           </View>
         </ScrollView>
       </View>

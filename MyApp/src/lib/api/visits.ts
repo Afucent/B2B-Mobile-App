@@ -7,6 +7,11 @@ export interface FieldVisit {
   dealer_id: string;
   dealer_name?: string | null;
   dealer_address?: string | null;
+  dealer_area?: string | null;
+  dealer_city?: string | null;
+  dealer_state?: string | null;
+  dealer_country?: string | null;
+  dealer_pin_code?: string | null;
   assigned_by_id?: string | null;
   scheduled_at: string;
   status: string;
@@ -17,6 +22,10 @@ export interface FieldVisit {
   completed_at?: string | null;
   check_in_latitude?: number | null;
   check_in_longitude?: number | null;
+  reached_at?: string | null;
+  reached_latitude?: number | null;
+  reached_longitude?: number | null;
+  reached_address?: string | null;
   created_at: string;
 }
 
@@ -89,9 +98,37 @@ export function getVisitHistory(params?: {
   return apiRequest<{ items: FieldVisit[]; total: number }>(`/visits/history${suffix}`);
 }
 
+export function getMyVisit(visitId: string) {
+  return apiRequest<FieldVisit>(`/visits/${visitId}`);
+}
+
+export function checkInVisit(
+  visitId: string,
+  data: { latitude: number; longitude: number; address?: string },
+) {
+  // Dedicated check-in endpoint; /reached is the same operation (kept for compatibility).
+  return apiRequest<FieldVisit>(`/visits/${visitId}/reached`, {
+    method: 'POST',
+    body: data,
+  });
+}
+
+export function markVisitReached(
+  visitId: string,
+  data: { latitude: number; longitude: number; address?: string },
+) {
+  return apiRequest<FieldVisit>(`/visits/${visitId}/reached`, { method: 'POST', body: data });
+}
+
 export function completeVisit(
   visitId: string,
-  data: { notes?: string; photo_url?: string; latitude?: number; longitude?: number },
+  data: {
+    notes?: string;
+    photo_url?: string;
+    latitude?: number;
+    longitude?: number;
+    address?: string;
+  },
 ) {
   return apiRequest<FieldVisit>(`/visits/${visitId}/complete`, { method: 'POST', body: data });
 }

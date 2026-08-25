@@ -40,6 +40,8 @@ export interface LiveVisit {
 export interface EmployeeLiveDetail {
   employee_id: string;
   employee_name: string;
+  employee_initials?: string;
+  avatar_url?: string | null;
   employee_code: string | null;
   designation: string | null;
   region_label: string | null;
@@ -68,7 +70,7 @@ export function getTodayStatus() {
 export function clockIn(latitude: number, longitude: number) {
   return apiRequest<AttendanceRecord>('/attendance/clock-in', {
     method: 'POST',
-    body: { latitude, longitude },
+    body: { latitude, longitude, enable_location_tracking: false },
   });
 }
 

@@ -34,13 +34,16 @@ export default function AdminLiveTrackingScreen() {
           latitude: item.last_latitude as number,
           longitude: item.last_longitude as number,
           label: item.employee_name,
+          initials: item.employee_initials,
+          avatarUrl: item.avatar_url,
         })),
     [items],
   );
 
   const focus = focusId ? items.find((i) => i.employee_id === focusId) : items[0];
-  const centerLat = focus?.last_latitude ?? 28.6139;
-  const centerLon = focus?.last_longitude ?? 77.209;
+  const hasPins = markers.length > 0;
+  const centerLat = hasPins ? (focus?.last_latitude ?? markers[0].latitude) : 20;
+  const centerLon = hasPins ? (focus?.last_longitude ?? markers[0].longitude) : 0;
 
   return (
     <RequireModuleAccess module="live_location">
@@ -50,7 +53,7 @@ export default function AdminLiveTrackingScreen() {
           latitude={centerLat}
           longitude={centerLon}
           height={markers.length > 1 ? 320 : 260}
-          zoom={markers.length > 3 ? 5 : markers.length > 1 ? 11 : 14}
+          zoom={hasPins ? (markers.length > 3 ? 5 : markers.length > 1 ? 11 : 14) : 2}
           markers={markers}
           onMarkerPress={(id) => setFocusId(id)}
         />
@@ -58,7 +61,7 @@ export default function AdminLiveTrackingScreen() {
           {loading ? <Text style={styles.meta}>Loading…</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Text style={styles.section}>
-            {markers.length > 1 ? 'All employees on map' : 'Field team'} ({items.length})
+            {markers.length > 1 ? 'All employees on map' : 'Live tracking'} ({items.length})
           </Text>
           <FlatList
             data={items}

@@ -31,11 +31,13 @@ export default function RootLayout() {
           <Stack.Screen name="location-required" />
           <Stack.Screen name="missed-clock-out" />
           <Stack.Screen name="dealer-detail" />
+          <Stack.Screen name="visit-detail" />
+          <Stack.Screen name="visit-in" />
+          <Stack.Screen name="visit-map" />
           <Stack.Screen name="visit-check-in" />
           <Stack.Screen name="visit-notes" />
           <Stack.Screen name="visit-check-out" />
           <Stack.Screen name="visit-complete" />
-          <Stack.Screen name="unplanned-visit" />
           <Stack.Screen name="visit-history" />
           <Stack.Screen name="apply-leave" />
           <Stack.Screen name="leave-applied" />

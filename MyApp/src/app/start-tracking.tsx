@@ -30,7 +30,7 @@ export default function StartTrackingScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(new Date());
-  const [pingMinutes, setPingMinutes] = useState(10);
+  const [pingMinutes, setPingMinutes] = useState(20);
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -59,7 +59,7 @@ export default function StartTrackingScreen() {
 
   useEffect(() => {
     void getFieldOperationsSettings()
-      .then((settings) => setPingMinutes(Math.max(settings.gps_ping_interval_minutes ?? 10, 10)))
+      .then((settings) => setPingMinutes(Math.max(settings.gps_ping_interval_minutes ?? 20, 20)))
       .catch(() => undefined);
   }, []);
 
@@ -144,6 +144,18 @@ export default function StartTrackingScreen() {
   const record = today?.record;
   const lat = loc?.latitude ?? live?.latitude ?? null;
   const lon = loc?.longitude ?? live?.longitude ?? null;
+  const mapLabel = live?.employee_name ?? user?.name ?? 'You';
+  const mapInitials =
+    live?.employee_initials ??
+    (mapLabel
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((p, i, arr) => (arr.length === 1 ? p.slice(0, 2) : p[0]))
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'YO');
+  const avatarUrl = live?.avatar_url ?? user?.avatar_url ?? null;
 
   return (
     <View style={styles.flex}>
@@ -151,7 +163,22 @@ export default function StartTrackingScreen() {
 
       <View style={styles.mapWrap}>
         {lat != null && lon != null ? (
-          <LocationMap latitude={lat} longitude={lon} height={240} />
+          <LocationMap
+            latitude={lat}
+            longitude={lon}
+            height={240}
+            markers={[
+              {
+                id: user?.id ?? 'self',
+                latitude: lat,
+                longitude: lon,
+                label: mapLabel,
+                initials: mapInitials,
+                avatarUrl,
+                color: '#0F766E',
+              },
+            ]}
+          />
         ) : (
           <View style={styles.mapFallback}>
             <ActivityIndicator color="#fff" />
@@ -195,6 +222,7 @@ export default function StartTrackingScreen() {
           {trackingActive && live?.last_ping_label ? (
             <Text style={styles.meta}>Last ping · {live.last_ping_label}</Text>
           ) : null}
+          <Text style={styles.meta}>Location logs every {pingMinutes} min while tracking</Text>
         </View>
 
         <Text style={styles.note}>

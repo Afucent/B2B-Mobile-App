@@ -1,4 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { Image } from 'expo-image';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -27,6 +29,24 @@ export default function VisitHistoryScreen() {
 function coordsLabel(lat?: number | null, lon?: number | null) {
   if (lat == null || lon == null) return null;
   return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+}
+
+function openMap(opts: {
+  lat?: number | null;
+  lon?: number | null;
+  title: string;
+  subtitle?: string;
+}) {
+  if (opts.lat == null || opts.lon == null) return;
+  router.push({
+    pathname: '/visit-map',
+    params: {
+      lat: String(opts.lat),
+      lon: String(opts.lon),
+      title: opts.title,
+      subtitle: opts.subtitle ?? '',
+    },
+  });
 }
 
 function VisitHistoryContent({ admin }: { admin: boolean }) {
@@ -88,15 +108,18 @@ function VisitHistoryContent({ admin }: { admin: boolean }) {
           <View style={styles.filters}>
             <Text style={styles.sub}>
               {admin
-                ? 'Completed check-ins across the organisation.'
-                : 'Your completed check-ins with location, time, date and notes.'}
+                ? 'Completed visits with check-in and check-out details.'
+                : 'Your completed visits with check-in / check-out location, time, notes and photo.'}
             </Text>
             {admin ? (
               <ScrollChips
                 label="Employee"
                 value={employeeId}
                 onChange={setEmployeeId}
-                options={[{ id: 'all', name: 'All' }, ...employees.map((e) => ({ id: e.id, name: e.name }))]}
+                options={[
+                  { id: 'all', name: 'All' },
+                  ...employees.map((e) => ({ id: e.id, name: e.name })),
+                ]}
               />
             ) : null}
             <View style={styles.dateRow}>
@@ -127,8 +150,9 @@ function VisitHistoryContent({ admin }: { admin: boolean }) {
         }
         ListEmptyComponent={!loading ? <Text style={styles.meta}>No completed visits found.</Text> : null}
         renderItem={({ item }) => {
-          const checkInAt = item.completed_at ?? item.scheduled_at;
-          const coords = coordsLabel(item.check_in_latitude, item.check_in_longitude);
+          const checkInCoords = coordsLabel(item.reached_latitude, item.reached_longitude);
+          const checkOutCoords = coordsLabel(item.check_in_latitude, item.check_in_longitude);
+          const checkOutAt = item.completed_at ?? item.scheduled_at;
           return (
             <View style={styles.row}>
               <Text style={styles.name}>{item.dealer_name ?? 'Dealer'}</Text>
@@ -140,9 +164,70 @@ function VisitHistoryContent({ admin }: { admin: boolean }) {
               ) : null}
 
               <View style={styles.detailBlock}>
-                <Detail label="Date" value={formatDate(checkInAt)} />
-                <Detail label="Time" value={formatClock(checkInAt)} />
-                <Detail label="Check-in location" value={coords ?? '—'} />
+                <View style={styles.blockHead}>
+                  <Text style={styles.blockTitle}>Check-in</Text>
+                  <Pressable
+                    style={styles.mapIcon}
+                    disabled={item.reached_latitude == null || item.reached_longitude == null}
+                    onPress={() =>
+                      openMap({
+                        lat: item.reached_latitude,
+                        lon: item.reached_longitude,
+                        title: 'Check-in location',
+                        subtitle: item.dealer_name ?? undefined,
+                      })
+                    }>
+                    <Ionicons
+                      name="map"
+                      size={18}
+                      color={
+                        item.reached_latitude != null ? Colors.brand : Colors.muted
+                      }
+                    />
+                  </Pressable>
+                </View>
+                <Detail
+                  label="Time"
+                  value={
+                    item.reached_at
+                      ? `${formatDate(item.reached_at)} · ${formatClock(item.reached_at)}`
+                      : '—'
+                  }
+                />
+                <Detail
+                  label="Location"
+                  value={item.reached_address || checkInCoords || '—'}
+                />
+              </View>
+
+              <View style={styles.detailBlock}>
+                <View style={styles.blockHead}>
+                  <Text style={styles.blockTitle}>Check-out</Text>
+                  <Pressable
+                    style={styles.mapIcon}
+                    disabled={item.check_in_latitude == null || item.check_in_longitude == null}
+                    onPress={() =>
+                      openMap({
+                        lat: item.check_in_latitude,
+                        lon: item.check_in_longitude,
+                        title: 'Check-out location',
+                        subtitle: item.dealer_name ?? undefined,
+                      })
+                    }>
+                    <Ionicons
+                      name="map"
+                      size={18}
+                      color={
+                        item.check_in_latitude != null ? Colors.brand : Colors.muted
+                      }
+                    />
+                  </Pressable>
+                </View>
+                <Detail
+                  label="Time"
+                  value={`${formatDate(checkOutAt)} · ${formatClock(checkOutAt)}`}
+                />
+                <Detail label="Location" value={checkOutCoords || '—'} />
               </View>
 
               {item.unplanned ? (
@@ -151,6 +236,9 @@ function VisitHistoryContent({ admin }: { admin: boolean }) {
 
               <Text style={styles.notesLabel}>Notes</Text>
               <Text style={styles.notes}>{item.notes?.trim() ? item.notes : '—'}</Text>
+              {item.photo_url ? (
+                <Image source={{ uri: item.photo_url }} style={styles.photo} contentFit="cover" />
+              ) : null}
             </View>
           );
         }}
@@ -255,9 +343,28 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     padding: 10,
   },
+  blockHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  blockTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: Colors.brand,
+    textTransform: 'uppercase',
+  },
+  mapIcon: { padding: 4 },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   detailLabel: { color: Colors.muted, fontSize: 12, fontWeight: '600' },
-  detailValue: { color: Colors.heading, fontSize: 12, fontWeight: '700', flexShrink: 1, textAlign: 'right' },
+  detailValue: {
+    color: Colors.heading,
+    fontSize: 12,
+    fontWeight: '700',
+    flexShrink: 1,
+    textAlign: 'right',
+  },
   tag: { color: Colors.pendingText, fontSize: 11, fontWeight: '700', marginTop: 6 },
   notesLabel: {
     marginTop: 8,
@@ -267,4 +374,11 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   notes: { color: Colors.text, fontSize: 13 },
+  photo: {
+    width: '100%',
+    height: 140,
+    borderRadius: Radius.md,
+    marginTop: 8,
+    backgroundColor: Colors.borderLight,
+  },
 });

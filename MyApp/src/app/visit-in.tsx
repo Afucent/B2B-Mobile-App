@@ -1,16 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import LocationMap from '@/components/LocationMap';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { uploadMedia } from '@/lib/api/uploads';
-import { completeVisit } from '@/lib/api/visits';
+import { checkInVisit } from '@/lib/api/visits';
 import { formatClock, formatLongDate } from '@/lib/format';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
 
@@ -19,15 +16,13 @@ function routeParam(value?: string | string[]) {
   return value ?? '';
 }
 
-export default function VisitCheckOutScreen() {
+export default function VisitInScreen() {
   const params = useLocalSearchParams<{
     visitId?: string | string[];
     dealerName?: string | string[];
-    reachedAt?: string | string[];
+    day?: string | string[];
   }>();
   const visitId = routeParam(params.visitId);
-  const [notes, setNotes] = useState('');
-  const [photo, setPhoto] = useState<string | undefined>();
   const [loc, setLoc] = useState<DeviceLocation | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [loading, setLoading] = useState(false);
@@ -56,16 +51,6 @@ export default function VisitCheckOutScreen() {
     };
   }, []);
 
-  async function takePhoto() {
-    const cam = await ImagePicker.requestCameraPermissionsAsync();
-    if (cam.status !== 'granted') {
-      setError('Camera permission is required for check-out photo.');
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-    if (!result.canceled) setPhoto(result.assets[0].uri);
-  }
-
   async function submit() {
     if (!visitId) {
       setError('Missing visit details.');
@@ -76,18 +61,23 @@ export default function VisitCheckOutScreen() {
     try {
       const next = loc ?? (await requestLocation());
       setLoc(next);
-      let photoUrl: string | undefined;
-      if (photo) photoUrl = await uploadMedia(photo);
-      await completeVisit(visitId, {
-        notes: notes.trim() || undefined,
-        photo_url: photoUrl,
+      await checkInVisit(visitId, {
         latitude: next.latitude,
         longitude: next.longitude,
         address: next.address,
       });
-      router.replace('/visit-history');
+      router.replace({
+        pathname: '/visit-detail',
+        params: {
+          visitId,
+          dealerName: routeParam(params.dealerName) || 'Dealer',
+          checkedIn: '1',
+          reachedAt: new Date().toISOString(),
+          day: routeParam(params.day),
+        },
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Check-out failed');
+      setError(err instanceof Error ? err.message : 'Check-in failed');
     } finally {
       setLoading(false);
     }
@@ -95,16 +85,12 @@ export default function VisitCheckOutScreen() {
 
   const lat = loc?.latitude;
   const lon = loc?.longitude;
-  const reachedAt = routeParam(params.reachedAt);
 
   return (
     <View style={styles.flex}>
-      <ScreenHeader title="Check-out" onBack={() => router.back()} />
+      <ScreenHeader title="Check-in" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.dealer}>{routeParam(params.dealerName) || 'Dealer'}</Text>
-        {reachedAt ? (
-          <Text style={styles.meta}>Checked in · {formatClock(reachedAt)}</Text>
-        ) : null}
 
         <View style={styles.mapWrap}>
           {lat != null && lon != null ? (
@@ -123,12 +109,17 @@ export default function VisitCheckOutScreen() {
 
         <View style={styles.card}>
           <View style={styles.metaRow}>
+            <Ionicons name="calendar-outline" size={16} color={Colors.brand} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.kicker}>DATE</Text>
+              <Text style={styles.value}>{formatLongDate(now)}</Text>
+            </View>
+          </View>
+          <View style={styles.metaRow}>
             <Ionicons name="time-outline" size={16} color={Colors.brand} />
             <View style={{ flex: 1 }}>
               <Text style={styles.kicker}>TIME</Text>
-              <Text style={styles.value}>
-                {formatLongDate(now)} · {formatClock(now.toISOString())}
-              </Text>
+              <Text style={styles.value}>{formatClock(now.toISOString())}</Text>
             </View>
           </View>
           <View style={styles.metaRow}>
@@ -147,28 +138,9 @@ export default function VisitCheckOutScreen() {
           </View>
         </View>
 
-        <Text style={styles.label}>Notes</Text>
-        <TextInput
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="Write check-out notes…"
-          placeholderTextColor={Colors.muted}
-          multiline
-          style={styles.area}
-        />
-
-        <Text style={styles.label}>Location photo</Text>
-        <View style={styles.proofRow}>
-          <Pressable style={styles.addPhoto} onPress={() => void takePhoto()}>
-            <Ionicons name="camera-outline" size={22} color={Colors.muted} />
-            <Text style={styles.addText}>Click photo</Text>
-          </Pressable>
-          {photo ? <Image source={{ uri: photo }} style={styles.preview} /> : null}
-        </View>
-
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton
-          label="Submit check-out"
+          label="Submit check-in"
           loading={loading}
           disabled={locLoading}
           onPress={() => void submit()}
@@ -180,9 +152,8 @@ export default function VisitCheckOutScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { padding: Spacing.md, gap: 10, paddingBottom: 32 },
+  body: { padding: Spacing.md, gap: 12, paddingBottom: 32 },
   dealer: { fontSize: 18, fontWeight: '800', color: Colors.heading },
-  meta: { color: Colors.muted, marginTop: -4 },
   mapWrap: { position: 'relative' },
   mapFallback: {
     height: 220,
@@ -213,31 +184,5 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   kicker: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, color: Colors.muted },
   value: { fontWeight: '700', color: Colors.heading, fontSize: 15, marginTop: 2 },
-  label: { fontWeight: '800', color: Colors.heading, marginTop: 4 },
-  area: {
-    minHeight: 110,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: Radius.md,
-    padding: 12,
-    textAlignVertical: 'top',
-    backgroundColor: Colors.background,
-    color: Colors.heading,
-  },
-  proofRow: { flexDirection: 'row', gap: 12 },
-  addPhoto: {
-    width: 110,
-    height: 110,
-    borderRadius: Radius.md,
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.background,
-    gap: 6,
-  },
-  addText: { color: Colors.muted, fontSize: 11 },
-  preview: { flex: 1, height: 110, borderRadius: Radius.md },
   error: { color: Colors.danger },
 });

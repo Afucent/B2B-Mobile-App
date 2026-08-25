@@ -1,11 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { uploadMedia } from '@/lib/api/uploads';
 import { completeVisit, createUnplannedVisit, getVisitAssignOptions } from '@/lib/api/visits';
 import { formatClock, formatLongDate } from '@/lib/format';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
@@ -17,6 +20,10 @@ export default function VisitCheckInSubmitScreen() {
     dealerName?: string;
     dealerAddress?: string;
     scheduledAt?: string;
+    reachedAt?: string;
+    reachedAddress?: string;
+    reachedLat?: string;
+    reachedLon?: string;
     reason?: string;
     unplanned?: string;
   }>();
@@ -28,11 +35,18 @@ export default function VisitCheckInSubmitScreen() {
       : '',
   );
   const [notes, setNotes] = useState('');
+  const [photo, setPhoto] = useState<string | undefined>();
   const [loc, setLoc] = useState<DeviceLocation | null>(null);
   const [now] = useState(() => new Date());
   const [loading, setLoading] = useState(false);
   const [locLoading, setLocLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const reachedAt = params.reachedAt || '';
+  const reachedCoords =
+    params.reachedLat && params.reachedLon
+      ? `${Number(params.reachedLat).toFixed(5)}, ${Number(params.reachedLon).toFixed(5)}`
+      : '';
 
   useEffect(() => {
     if (params.dealerName) setTitle(params.dealerName);
@@ -74,24 +88,38 @@ export default function VisitCheckInSubmitScreen() {
     })();
   }, []);
 
+  async function takePhoto() {
+    const cam = await ImagePicker.requestCameraPermissionsAsync();
+    if (cam.status !== 'granted') {
+      setError('Camera permission is required to capture location photo.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    if (!result.canceled) setPhoto(result.assets[0].uri);
+  }
+
   async function submit() {
     setLoading(true);
     setError('');
     try {
       const next = loc ?? (await requestLocation());
       setLoc(next);
+      let photoUrl: string | undefined;
+      if (photo) photoUrl = await uploadMedia(photo);
 
       if (params.unplanned === '1' && params.dealerId && params.reason) {
         await createUnplannedVisit({
           dealer_id: params.dealerId,
           reason: params.reason,
           notes: notes.trim() || undefined,
+          photo_url: photoUrl,
           latitude: next.latitude,
           longitude: next.longitude,
         });
       } else if (params.visitId) {
         await completeVisit(params.visitId, {
           notes: notes.trim() || undefined,
+          photo_url: photoUrl,
           latitude: next.latitude,
           longitude: next.longitude,
         });
@@ -118,36 +146,49 @@ export default function VisitCheckInSubmitScreen() {
           {scheduledLabel ? <Text style={styles.meta}>{scheduledLabel}</Text> : null}
         </View>
 
-        <View style={styles.card}>
-          <View style={styles.metaRow}>
-            <Ionicons name="calendar-outline" size={16} color={Colors.brand} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.kicker}>DATE</Text>
-              <Text style={styles.value}>{formatLongDate(now)}</Text>
+        {reachedAt ? (
+          <View style={styles.card}>
+            <Text style={styles.kicker}>REACHED TIME</Text>
+            <Text style={styles.value}>
+              {formatLongDate(reachedAt)} · {formatClock(reachedAt)}
+            </Text>
+            <Text style={[styles.kicker, { marginTop: 10 }]}>REACHED LOCATION</Text>
+            <Text style={styles.value}>
+              {params.reachedAddress || reachedCoords || loc?.address || 'GPS saved'}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.card}>
+            <View style={styles.metaRow}>
+              <Ionicons name="calendar-outline" size={16} color={Colors.brand} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.kicker}>DATE</Text>
+                <Text style={styles.value}>{formatLongDate(now)}</Text>
+              </View>
+            </View>
+            <View style={styles.metaRow}>
+              <Ionicons name="time-outline" size={16} color={Colors.brand} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.kicker}>TIME</Text>
+                <Text style={styles.value}>{formatClock(now.toISOString())}</Text>
+              </View>
+            </View>
+            <View style={styles.metaRow}>
+              <Ionicons name="location-outline" size={16} color={Colors.brand} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.kicker}>LOCATION</Text>
+                <Text style={styles.value}>
+                  {locLoading
+                    ? 'Fetching GPS…'
+                    : loc?.address ||
+                      (loc
+                        ? `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`
+                        : 'Location unavailable')}
+                </Text>
+              </View>
             </View>
           </View>
-          <View style={styles.metaRow}>
-            <Ionicons name="time-outline" size={16} color={Colors.brand} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.kicker}>TIME</Text>
-              <Text style={styles.value}>{formatClock(now.toISOString())}</Text>
-            </View>
-          </View>
-          <View style={styles.metaRow}>
-            <Ionicons name="location-outline" size={16} color={Colors.brand} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.kicker}>LOCATION</Text>
-              <Text style={styles.value}>
-                {locLoading
-                  ? 'Fetching GPS…'
-                  : loc?.address ||
-                    (loc
-                      ? `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`
-                      : 'Location unavailable')}
-              </Text>
-            </View>
-          </View>
-        </View>
+        )}
 
         <Text style={styles.label}>Notes</Text>
         <TextInput
@@ -158,6 +199,15 @@ export default function VisitCheckInSubmitScreen() {
           multiline
           style={styles.area}
         />
+
+        <Text style={styles.label}>Location photo</Text>
+        <View style={styles.proofRow}>
+          <Pressable style={styles.addPhoto} onPress={() => void takePhoto()}>
+            <Ionicons name="camera-outline" size={22} color={Colors.muted} />
+            <Text style={styles.addText}>Click photo</Text>
+          </Pressable>
+          {photo ? <Image source={{ uri: photo }} style={styles.preview} /> : null}
+        </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton
@@ -205,5 +255,20 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     color: Colors.heading,
   },
+  proofRow: { flexDirection: 'row', gap: 12 },
+  addPhoto: {
+    width: 110,
+    height: 110,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.background,
+    gap: 6,
+  },
+  addText: { color: Colors.muted, fontSize: 11 },
+  preview: { flex: 1, height: 110, borderRadius: Radius.md },
   error: { color: Colors.danger },
 });
