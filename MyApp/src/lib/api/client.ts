@@ -29,23 +29,29 @@ function getExpoDevHost(): string | null {
   return host || null;
 }
 
-function defaultApiBase() {
-  const configured = process.env.EXPO_PUBLIC_API_URL?.trim();
+/** True for typical home/office LAN IPs the phone can reach on the same Wi‑Fi. */
+function isLanHost(host: string): boolean {
+  return /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+}
 
-  // In dev, follow the same LAN host Metro uses so USB/Wi‑Fi devices reach the PC backend.
+function resolveApiBase(): string {
+  const configured = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '');
+
+  // In Expo Go / metro, the phone already reached this host to download JS.
+  // Prefer it for the API so a stale .env IP cannot break same-Wi‑Fi local backend.
   if (__DEV__) {
     const devHost = getExpoDevHost();
-    if (devHost) {
+    if (devHost && isLanHost(devHost)) {
       return `http://${devHost}:${DEFAULT_API_PORT}${API_PATH}`;
     }
-    if (Platform.OS === 'android') {
-      return `http://10.0.2.2:${DEFAULT_API_PORT}${API_PATH}`;
-    }
-    return `http://localhost:${DEFAULT_API_PORT}${API_PATH}`;
   }
 
   if (configured) {
     return configured;
+  }
+
+  if (__DEV__ && Platform.OS === 'android') {
+    return `http://10.0.2.2:${DEFAULT_API_PORT}${API_PATH}`;
   }
   if (Platform.OS === 'android') {
     return `http://10.0.2.2:${DEFAULT_API_PORT}${API_PATH}`;
@@ -53,7 +59,13 @@ function defaultApiBase() {
   return `http://localhost:${DEFAULT_API_PORT}${API_PATH}`;
 }
 
-export const API_BASE = defaultApiBase();
+/** Resolved per request so Expo hostUri updates are picked up after reload. */
+export function getApiBase(): string {
+  return resolveApiBase();
+}
+
+/** @deprecated use getApiBase() — kept for call sites that import a constant */
+export const API_BASE = resolveApiBase();
 
 function formatApiError(detail: unknown, fallback: string) {
   if (typeof detail === 'string') return detail;
@@ -83,6 +95,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const { body, auth = true, headers, timeout, ...rest } = options;
   const method = (rest.method ?? 'GET').toUpperCase();
   const requestTimeoutMs = resolveRequestTimeoutMs(method, timeout);
+  const apiBase = getApiBase();
 
   const requestHeaders: Record<string, string> = {
     Accept: 'application/json',
@@ -102,10 +115,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), requestTimeoutMs);
+  const url = `${apiBase}${path}`;
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${path}`, {
+    response = await fetch(url, {
       ...rest,
       headers: requestHeaders,
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -119,7 +133,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       );
     }
     throw new ApiRequestError(
-      'Unable to reach the server. Check your connection and that the backend is running.',
+      `Unable to reach the server at ${apiBase}. Same Wi‑Fi alone is not enough — Windows Firewall often blocks port ${DEFAULT_API_PORT}. On the PC run (Admin PowerShell): New-NetFirewallRule -DisplayName "AFBEX Backend 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Any`,
       0,
     );
   } finally {

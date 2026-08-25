@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,27 +12,17 @@ import { useAuth } from '@/context/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   endLocation,
-  getEmployeeLiveDetail,
   getMyHistory,
   getTodayStatus,
-  pingLocation,
-  startLocation,
   type AttendanceRecord,
-  type EmployeeLiveDetail,
   type TodayStatus,
 } from '@/lib/api/attendance';
 import { getLeaveBalance, getMyLeaveRequests, type LeaveRequest } from '@/lib/api/leave';
 import { getFieldOperationsSettings } from '@/lib/api/org';
-import {
-  durationLabel,
-  employeeCode,
-  formatClock,
-  formatDate,
-  formatKm,
-} from '@/lib/format';
+import { employeeCode, formatClock, formatDate } from '@/lib/format';
 import { displayYmdRange, leaveStatusMeta } from '@/lib/leaveUi';
-import { requestLocation } from '@/lib/location';
 import { routeForLocationAction } from '@/lib/locationGate';
+import { requestLocation } from '@/lib/location';
 import { isFieldTrackingEnabled } from '@/lib/permissions';
 import { canAccessLeaveManagement } from '@/lib/tabNavigation';
 import { getMissedClockOut, saveMissedClockOut } from '@/lib/visits';
@@ -60,17 +50,15 @@ function ClockContent() {
   };
   const showLeaveManagement = canAccessLeaveManagement(permCtx);
   const [today, setToday] = useState<TodayStatus | null>(null);
-  const [live, setLive] = useState<EmployeeLiveDetail | null>(null);
   const [leaveDays, setLeaveDays] = useState(0);
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
-  const [now, setNow] = useState(new Date());
   const [missedOpen, setMissedOpen] = useState(false);
-  const [settings, setSettings] = useState<Awaited<ReturnType<typeof getFieldOperationsSettings>> | null>(
-    null,
-  );
-  const [actionLoading, setActionLoading] = useState<'start' | 'end' | null>(null);
-  const [actionError, setActionError] = useState('');
-  const [actionMessage, setActionMessage] = useState('');
+  const [settings, setSettings] = useState<Awaited<
+    ReturnType<typeof getFieldOperationsSettings>
+  > | null>(null);
+  const [trackingBusy, setTrackingBusy] = useState(false);
+  const [trackingError, setTrackingError] = useState('');
+
   const canTrack =
     canCreate('user_tracking') ||
     has('live_location', 'create') ||
@@ -80,8 +68,6 @@ function ClockContent() {
     if (!user) return;
     const status = await getTodayStatus().catch(() => null);
     setToday(status);
-    const liveDetail = await getEmployeeLiveDetail(user.id).catch(() => null);
-    setLive(liveDetail);
     const orgSettings = await getFieldOperationsSettings().catch(() => null);
     setSettings(orgSettings);
     const balance = await getLeaveBalance().catch(() => null);
@@ -124,57 +110,6 @@ function ClockContent() {
     }, [load]),
   );
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 30000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    if (!today?.tracking_active) return;
-    let cancelled = false;
-    const intervalMinutes = Math.max(settings?.gps_ping_interval_minutes ?? 10, 10);
-    async function ping() {
-      try {
-        const loc = await requestLocation();
-        if (!cancelled) await pingLocation(loc.latitude, loc.longitude, loc.accuracy ?? undefined);
-      } catch {
-        /* ignore */
-      }
-    }
-    void ping();
-    const timer = setInterval(() => void ping(), intervalMinutes * 60 * 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [settings?.gps_ping_interval_minutes, today?.tracking_active]);
-
-  async function goWithLocation(next: '/clock-in' | '/clock-out') {
-    const block = await routeForLocationAction(next);
-    router.push(block ?? next);
-  }
-
-  async function updateTracking(action: 'start' | 'end') {
-    setActionLoading(action);
-    setActionError('');
-    setActionMessage('');
-    try {
-      const loc = await requestLocation();
-      if (action === 'start') {
-        await startLocation(loc.latitude, loc.longitude);
-        setActionMessage('Live tracking started.');
-      } else {
-        await endLocation(loc.latitude, loc.longitude);
-        setActionMessage('Live tracking ended.');
-      }
-      await load();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Unable to update live tracking.');
-    } finally {
-      setActionLoading(null);
-    }
-  }
-
   const onDuty = Boolean(today?.is_clocked_in);
   const record: AttendanceRecord | null = today?.record ?? null;
   const trackingActive = Boolean(today?.tracking_active);
@@ -182,6 +117,29 @@ function ClockContent() {
     settings?.shift_start_time && settings?.shift_end_time
       ? `${formatClock(new Date(`1970-01-01T${settings.shift_start_time}:00`).toISOString())}–${formatClock(new Date(`1970-01-01T${settings.shift_end_time}:00`).toISOString())}`
       : 'Shift settings unavailable';
+
+  async function goWithLocation(next: '/clock-in' | '/clock-out' | '/start-tracking') {
+    const block = await routeForLocationAction(next);
+    router.push(block ?? next);
+  }
+
+  async function onTrackingPress() {
+    if (trackingActive) {
+      setTrackingBusy(true);
+      setTrackingError('');
+      try {
+        const loc = await requestLocation();
+        await endLocation(loc.latitude, loc.longitude);
+        await load();
+      } catch (err) {
+        setTrackingError(err instanceof Error ? err.message : 'Unable to end tracking.');
+      } finally {
+        setTrackingBusy(false);
+      }
+      return;
+    }
+    await goWithLocation('/start-tracking');
+  }
 
   return (
     <ScrollView
@@ -192,12 +150,12 @@ function ClockContent() {
       {onDuty ? (
         <View style={[styles.tracking, !trackingActive && styles.trackingMuted]}>
           <Ionicons
-            name={trackingActive ? 'navigate' : 'pause-circle-outline'}
+            name={trackingActive ? 'navigate' : 'time-outline'}
             size={14}
             color={trackingActive ? Colors.trackingText : Colors.muted}
           />
           <Text style={[styles.trackingText, !trackingActive && styles.trackingTextMuted]}>
-            {trackingActive ? 'TRACKING ACTIVE · GPS ONLINE' : 'CLOCKED IN · TRACKING OFF'}
+            {trackingActive ? 'TRACKING ACTIVE' : 'ATTENDANCE MARKED · TRACKING OFF'}
           </Text>
         </View>
       ) : null}
@@ -208,45 +166,33 @@ function ClockContent() {
             <View style={[styles.statusDot, onDuty ? styles.dotOn : styles.dotIdle]} />
             <Text style={styles.statusLabel}>Status: {onDuty ? 'On Duty' : 'Idle'}</Text>
           </View>
-          <Text style={styles.empId}>{live?.employee_code ?? employeeCode(user?.id ?? '')}</Text>
+          <Text style={styles.empId}>{employeeCode(user?.id ?? '')}</Text>
         </View>
 
         {onDuty && record ? (
           <>
             <Text style={styles.metricLabel}>Clocked in since</Text>
             <Text style={styles.metricValueLg}>{formatClock(record.clock_in_time)}</Text>
-            <View style={styles.metricSplit}>
-              <View>
-                <Text style={styles.metricLabel}>Duration</Text>
-                <Text style={styles.metricValue}>
-                  {live?.working_duration_label ?? durationLabel(record.clock_in_time, now)}
-                </Text>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.metricLabel}>Distance</Text>
-                <Text style={styles.metricValue}>{formatKm(live?.distance_today_km)}</Text>
-              </View>
-            </View>
-            <View style={styles.metaCard}>
-              <Text style={styles.metricLabel}>Live tracking</Text>
-              <Text style={styles.metaValue}>
-                {trackingActive ? `On${live?.last_ping_label ? ` · Last ping ${live.last_ping_label}` : ''}` : 'Off'}
-              </Text>
-            </View>
+            <Text style={styles.hint}>
+              Attendance is already marked. Start Tracking opens the map and begins live location.
+            </Text>
             {canTrack ? (
               <View style={styles.actionRow}>
                 <PrimaryButton
                   label={trackingActive ? 'End Tracking' : 'Start Tracking'}
-                  onPress={() => void updateTracking(trackingActive ? 'end' : 'start')}
-                  loading={actionLoading === (trackingActive ? 'end' : 'start')}
+                  onPress={() => void onTrackingPress()}
+                  loading={trackingBusy}
                 />
-                <Pressable style={styles.secondaryButton} onPress={() => void goWithLocation('/clock-out')}>
+                <Pressable
+                  style={styles.secondaryButton}
+                  onPress={() => void goWithLocation('/clock-out')}>
                   <Text style={styles.secondaryButtonText}>Clock Out</Text>
                 </Pressable>
               </View>
             ) : (
               <PrimaryButton label="Clock Out" onPress={() => void goWithLocation('/clock-out')} />
             )}
+            {trackingError ? <Text style={styles.trackingError}>{trackingError}</Text> : null}
           </>
         ) : (
           <>
@@ -256,20 +202,13 @@ function ClockContent() {
             </Text>
             <PrimaryButton label="Clock In" onPress={() => void goWithLocation('/clock-in')} />
             {canTrack ? (
-              <>
-                <Pressable style={[styles.secondaryButton, styles.disabledButton]} disabled>
-                  <Text style={styles.secondaryButtonText}>Start Tracking</Text>
-                </Pressable>
-                <Text style={styles.hint}>
-                  Clock in first. Start Tracking then records live location, duration, and distance.
-                </Text>
-              </>
+              <Text style={styles.hint}>
+                Clock in marks attendance only. After that, Start Tracking shows the map and live
+                location.
+              </Text>
             ) : null}
           </>
         )}
-
-        {actionError ? <Text style={styles.error}>{actionError}</Text> : null}
-        {actionMessage ? <Text style={styles.success}>{actionMessage}</Text> : null}
       </View>
 
       {missedOpen ? (
@@ -367,15 +306,6 @@ const styles = StyleSheet.create({
   shiftValue: { color: Colors.heading, fontSize: 16, fontWeight: '700' },
   metricLabel: { color: Colors.muted, fontSize: 12 },
   metricValueLg: { fontSize: 28, fontWeight: '800', color: Colors.heading },
-  metricValue: { fontSize: 20, fontWeight: '800', color: Colors.heading },
-  metricSplit: { flexDirection: 'row', justifyContent: 'space-between' },
-  metaCard: {
-    backgroundColor: Colors.surface,
-    borderRadius: Radius.md,
-    padding: 12,
-    gap: 4,
-  },
-  metaValue: { color: Colors.heading, fontWeight: '700' },
   actionRow: { gap: 10 },
   secondaryButton: {
     minHeight: 52,
@@ -388,7 +318,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   secondaryButtonText: { color: Colors.heading, fontSize: 16, fontWeight: '700' },
-  disabledButton: { opacity: 0.45 },
   missed: {
     backgroundColor: Colors.pendingBg,
     borderRadius: Radius.lg,
@@ -437,10 +366,9 @@ const styles = StyleSheet.create({
   },
   applyText: { color: Colors.brand, fontWeight: '800' },
   hint: { color: Colors.muted, fontSize: 12, lineHeight: 18 },
+  trackingError: { color: Colors.danger, fontSize: 13 },
   sectionTitle: { fontSize: 16, fontWeight: '800', color: Colors.heading, marginTop: 4 },
   meta: { color: Colors.muted },
-  error: { color: Colors.danger, fontSize: 13 },
-  success: { color: Colors.success, fontSize: 13 },
   leaveRow: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md,

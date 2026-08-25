@@ -47,7 +47,7 @@ function FieldContent() {
           <Ionicons name="add-circle-outline" size={22} color={Colors.brand} />
           <View style={{ flex: 1 }}>
             <Text style={styles.quickTitle}>Unplanned visit</Text>
-            <Text style={styles.quickCopy}>Search dealer, add reason, photo & notes</Text>
+            <Text style={styles.quickCopy}>Search dealer, add reason & notes</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={Colors.muted} />
         </Pressable>

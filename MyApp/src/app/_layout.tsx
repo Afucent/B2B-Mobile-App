@@ -19,6 +19,7 @@ export default function RootLayout() {
           <Stack.Screen name="(admin)" />
           <Stack.Screen name="clock-in" />
           <Stack.Screen name="clock-in-confirmed" />
+          <Stack.Screen name="start-tracking" />
           <Stack.Screen name="clock-out" />
           <Stack.Screen name="shift-complete" />
           <Stack.Screen name="notifications" />

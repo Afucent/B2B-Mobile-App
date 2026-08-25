@@ -38,6 +38,18 @@ export function assignVisitsBatch(data: {
   });
 }
 
+export type VisitAssignOption = { id: string; name: string };
+export type VisitAssignEmployeeOption = VisitAssignOption & {
+  dealers: VisitAssignOption[];
+};
+
+export function getVisitAssignOptions() {
+  return apiRequest<{
+    employees: VisitAssignEmployeeOption[];
+    dealers: VisitAssignOption[];
+  }>('/visits/assign-options');
+}
+
 export function getMyVisits(day?: string) {
   const q = day ? `?day=${encodeURIComponent(day)}` : '';
   return apiRequest<{ items: FieldVisit[]; total: number }>(`/visits/my${q}`);

@@ -23,11 +23,14 @@ export default function ClockInConfirmedScreen() {
         <View style={styles.rows}>
           <Row label="Registered Checkpoint:" value={params.address || 'Current location'} />
           <Row label="Device GPS Lock:" value={`SECURE  (±${accuracy}m)`} valueColor={Colors.success} />
-          <Row label="Shift status:" value="Shift Started · Tracking" valueColor={Colors.brand} />
+          <Row label="Shift status:" value="Attendance marked" valueColor={Colors.brand} />
         </View>
+        <Text style={styles.hint}>
+          Live location is not started yet. Use Start Tracking from the Clock tab to open the map.
+        </Text>
       </View>
       <View style={styles.footer}>
-        <PrimaryButton label="Back to Dashboard" onPress={() => router.replace('/(app)')} />
+        <PrimaryButton label="Back to Clock" onPress={() => router.replace('/(app)/clock')} />
       </View>
     </View>
   );
@@ -62,5 +65,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   rowLabel: { color: Colors.muted, flex: 1 },
   rowValue: { color: Colors.heading, fontWeight: '700', flex: 1, textAlign: 'right' },
+  hint: { marginTop: 20, color: Colors.muted, fontSize: 13, lineHeight: 18, textAlign: 'center' },
   footer: { padding: 24 },
 });

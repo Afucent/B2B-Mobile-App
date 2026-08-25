@@ -7,23 +7,33 @@ import { LinkButton } from '@/components/ui/LinkButton';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
-import { listDealers, type Dealer } from '@/lib/api/dealers';
+import { getVisitAssignOptions } from '@/lib/api/visits';
 import { UNPLANNED_REASONS } from '@/lib/visits';
+
+type DealerOption = { id: string; name: string };
 
 export default function UnplannedVisitScreen() {
   const [query, setQuery] = useState('');
-  const [dealers, setDealers] = useState<Dealer[]>([]);
-  const [selected, setSelected] = useState<Dealer | null>(null);
+  const [dealers, setDealers] = useState<DealerOption[]>([]);
+  const [allDealers, setAllDealers] = useState<DealerOption[]>([]);
+  const [selected, setSelected] = useState<DealerOption | null>(null);
   const [reason, setReason] = useState<string | null>(UNPLANNED_REASONS[0]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const handle = setTimeout(() => {
-      void listDealers(query).then((res) => setDealers(res.items.slice(0, 8))).catch(() => setDealers([]));
-    }, 250);
-    return () => clearTimeout(handle);
-  }, [query]);
+    void getVisitAssignOptions()
+      .then((res) => setAllDealers(res.dealers ?? []))
+      .catch(() => setAllDealers([]));
+  }, []);
+
+  useEffect(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? allDealers.filter((d) => d.name.toLowerCase().includes(q))
+      : allDealers;
+    setDealers(filtered.slice(0, 20));
+  }, [query, allDealers]);
 
   async function start() {
     if (!selected || !reason) return;
@@ -32,6 +42,7 @@ export default function UnplannedVisitScreen() {
       pathname: '/visit-complete',
       params: {
         dealerId: selected.id,
+        dealerName: selected.name,
         reason: reason ?? '',
         unplanned: '1',
       },
@@ -97,7 +108,7 @@ export default function UnplannedVisitScreen() {
 
         <Text style={styles.note}>Note: Unplanned visits are logged and instantly visible to your regional sales manager.</Text>
         <PrimaryButton
-          label="Submit unplanned visit"
+          label="Continue to check-in"
           loading={loading}
           disabled={!selected || !reason}
           onPress={() => void start()}

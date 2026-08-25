@@ -1,27 +1,16 @@
-import LocationMap from '@/components/LocationMap';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
-import { Colors } from '@/constants/theme';
-import { useAuth } from '@/context/AuthContext';
-import {
-  clockOut,
-  getEmployeeLiveDetail,
-  getTodayStatus,
-  type AttendanceRecord,
-  type EmployeeLiveDetail,
-} from '@/lib/api/attendance';
-import { durationLabel, formatClock, formatKm } from '@/lib/format';
-import { requestLocation, type DeviceLocation } from '@/lib/location';
+import { Colors, Radius } from '@/constants/theme';
+import { clockOut, getTodayStatus, type AttendanceRecord } from '@/lib/api/attendance';
+import { durationLabel, formatClock } from '@/lib/format';
+import { requestLocation } from '@/lib/location';
 
 export default function ClockOutScreen() {
-  const { user } = useAuth();
-  const [loc, setLoc] = useState<DeviceLocation | null>(null);
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
-  const [live, setLive] = useState<EmployeeLiveDetail | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(new Date());
@@ -33,24 +22,19 @@ export default function ClockOutScreen() {
 
   useEffect(() => {
     void (async () => {
-      try {
-        setLoc(await requestLocation());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to read GPS.');
-      }
       const status = await getTodayStatus().catch(() => null);
       setRecord(status?.record ?? null);
-      if (user) {
-        setLive(await getEmployeeLiveDetail(user.id).catch(() => null));
+      if (!status?.is_clocked_in) {
+        router.replace('/(app)/clock');
       }
     })();
-  }, [user]);
+  }, []);
 
   async function onClockOut() {
-    if (!loc) return;
     setLoading(true);
     setError('');
     try {
+      const loc = await requestLocation();
       const closed = await clockOut(loc.latitude, loc.longitude);
       router.replace({
         pathname: '/shift-complete',
@@ -58,53 +42,50 @@ export default function ClockOutScreen() {
           inTime: closed.clock_in_time,
           outTime: closed.clock_out_time ?? new Date().toISOString(),
           hours: String(closed.working_hours ?? ''),
-          distance: String(live?.distance_today_km ?? 0),
-          visitsDone: String(live?.visits_completed ?? 0),
-          visitsAssigned: String(live?.visits_assigned ?? 0),
+          distance: '0',
+          visitsDone: '0',
+          visitsAssigned: '0',
           lock: closed.id.slice(0, 6).toUpperCase(),
         },
       });
     } catch (err) {
+      const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : '';
+      if (code === 'services_off') {
+        router.replace({ pathname: '/location-required', params: { reason: 'off', next: '/clock-out' } });
+        return;
+      }
+      if (code === 'denied') {
+        router.replace({
+          pathname: '/location-required',
+          params: { reason: 'denied', next: '/clock-out' },
+        });
+        return;
+      }
       setError(err instanceof Error ? err.message : 'Clock-out failed.');
     } finally {
       setLoading(false);
     }
   }
 
-  const lat = loc?.latitude ?? live?.latitude ?? 28.5355;
-  const lon = loc?.longitude ?? live?.longitude ?? 77.391;
-
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Clock Out" onBack={() => router.back()} />
-      <View style={styles.hero}>
-        {loc || live?.latitude ? (
-          <LocationMap latitude={lat} longitude={lon} height={240} />
-        ) : (
-          <ActivityIndicator color="#fff" />
-        )}
-      </View>
       <View style={styles.sheet}>
-        <Text style={styles.posLabel}>Current Position</Text>
-        <Text style={styles.posValue}>
-          {loc?.address || live?.address || 'Current GPS position'}
-        </Text>
+        <View style={styles.card}>
+          <Text style={styles.badge}>ATTENDANCE</Text>
+          <Text style={styles.title}>Close attendance</Text>
+          <Text style={styles.copy}>
+            Clock out ends your attendance session. Live tracking, if active, also stops here.
+          </Text>
+        </View>
 
-        <Text style={styles.summaryTitle}>Today’s shift summary</Text>
+        <Text style={styles.summaryTitle}>Today’s attendance</Text>
         <Row label="Started:" value={formatClock(record?.clock_in_time)} />
         <Row label="Current Time:" value={formatClock(now.toISOString())} />
-        <Row
-          label="Duration so far:"
-          value={live?.working_duration_label ?? durationLabel(record?.clock_in_time, now)}
-          accent
-        />
-        <Row label="Distance travelled:" value={formatKm(live?.distance_today_km)} accent />
+        <Row label="Duration so far:" value={durationLabel(record?.clock_in_time, now)} accent />
 
-        <Text style={styles.note}>
-          Ensure all dealer visit status logs are synchronized before completing clock-out.
-        </Text>
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <PrimaryButton label="Clock Out" onPress={() => void onClockOut()} loading={loading} disabled={!loc} />
+        <PrimaryButton label="Clock Out" onPress={() => void onClockOut()} loading={loading} />
       </View>
     </View>
   );
@@ -121,29 +102,29 @@ function Row({ label, value, accent }: { label: string; value: string; accent?: 
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.background },
-  hero: {
-    backgroundColor: Colors.mapOverlay,
-    height: 220,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  phone: {
-    width: 140,
-    height: 180,
-    borderRadius: 18,
-    overflow: 'hidden',
-    borderWidth: 6,
-    borderColor: '#111',
-  },
-  phoneMap: { width: '100%', height: '100%' },
   sheet: { padding: 20, gap: 8, flex: 1 },
-  posLabel: { color: Colors.muted, fontSize: 13 },
-  posValue: { fontSize: 18, fontWeight: '800', color: Colors.heading, marginTop: -4 },
-  summaryTitle: { marginTop: 12, fontWeight: '800', color: Colors.heading },
+  card: {
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    padding: 16,
+    gap: 8,
+    backgroundColor: Colors.surface,
+    marginBottom: 8,
+  },
+  badge: {
+    alignSelf: 'flex-start',
+    color: Colors.brand,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  title: { fontSize: 20, fontWeight: '800', color: Colors.heading },
+  copy: { color: Colors.muted, fontSize: 13, lineHeight: 18 },
+  summaryTitle: { marginTop: 8, fontWeight: '800', color: Colors.heading },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   rowLabel: { color: Colors.muted },
   rowValue: { fontWeight: '700', color: Colors.heading },
   accent: { color: Colors.brand },
-  note: { color: Colors.muted, fontSize: 13, lineHeight: 18, marginVertical: 8 },
   error: { color: Colors.danger },
 });

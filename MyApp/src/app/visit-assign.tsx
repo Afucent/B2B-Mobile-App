@@ -18,10 +18,15 @@ import { OutlineButton } from '@/components/ui/OutlineButton';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { listDealersAdmin, type Dealer } from '@/lib/api/dealers';
 import { getFieldOperationsSettings } from '@/lib/api/org';
-import { assignVisitsBatch, getVisitHistory, type FieldVisit } from '@/lib/api/visits';
-import { listUsers, type AdminUser } from '@/lib/api/users';
+import {
+  assignVisitsBatch,
+  getVisitAssignOptions,
+  getVisitHistory,
+  type FieldVisit,
+  type VisitAssignEmployeeOption,
+  type VisitAssignOption,
+} from '@/lib/api/visits';
 import { formatDate } from '@/lib/format';
 import { ymd } from '@/lib/leaveUi';
 
@@ -136,8 +141,7 @@ function AssignVisitModal({
   onClose: () => void;
   onAssigned: () => Promise<void>;
 }) {
-  const [employees, setEmployees] = useState<AdminUser[]>([]);
-  const [dealers, setDealers] = useState<Dealer[]>([]);
+  const [employees, setEmployees] = useState<VisitAssignEmployeeOption[]>([]);
   const [workingDays, setWorkingDays] = useState<string[]>([
     'monday',
     'tuesday',
@@ -166,13 +170,17 @@ function AssignVisitModal({
     setDates([]);
     setDayDealers({});
     setError('');
-    void Promise.all([listUsers(0, 100), listDealersAdmin(), getFieldOperationsSettings().catch(() => null)])
-      .then(([users, dealerRes, settings]) => {
-        setEmployees(users.items);
-        setDealers(dealerRes.items);
+    void Promise.all([
+      getVisitAssignOptions(),
+      getFieldOperationsSettings().catch(() => null),
+    ])
+      .then(([options, settings]) => {
+        setEmployees(options.employees ?? []);
         if (settings?.working_days?.length) setWorkingDays(settings.working_days);
       })
-      .catch(() => {});
+      .catch(() => {
+        setEmployees([]);
+      });
   }, [visible]);
 
   function generate() {
@@ -205,15 +213,6 @@ function AssignVisitModal({
     });
   }
 
-  function copyToAll(fromDate: string) {
-    const source = dayDealers[fromDate] ?? [];
-    setDayDealers((prev) => {
-      const next = { ...prev };
-      for (const date of dates) next[date] = [...source];
-      return next;
-    });
-  }
-
   async function submit() {
     if (!employeeId) {
       setError('Choose an employee.');
@@ -241,6 +240,7 @@ function AssignVisitModal({
   }
 
   const employee = employees.find((e) => e.id === employeeId);
+  const dealers: VisitAssignOption[] = employee?.dealers ?? [];
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -302,23 +302,26 @@ function AssignVisitModal({
               <View key={date} style={styles.dayCard}>
                 <Text style={styles.name}>{dayLabel(date)}</Text>
                 <Text style={styles.label}>Dealers</Text>
-                {dealers.map((dealer) => {
-                  const checked = (dayDealers[date] ?? []).includes(dealer.id);
-                  return (
-                    <Pressable
-                      key={dealer.id}
-                      style={styles.checkRow}
-                      onPress={() => toggleDealer(date, dealer.id)}>
-                      <View style={[styles.box, checked && styles.boxOn]} />
-                      <Text style={styles.checkLabel}>{dealer.name}</Text>
-                    </Pressable>
-                  );
-                })}
-                {dates.length > 1 ? (
-                  <Pressable onPress={() => copyToAll(date)}>
-                    <Text style={styles.copyLink}>Copy to all dates</Text>
-                  </Pressable>
-                ) : null}
+                {dealers.length === 0 ? (
+                  <Text style={styles.meta}>
+                    {employeeId
+                      ? 'No dealers assigned to this employee.'
+                      : 'Select an employee to see assigned dealers.'}
+                  </Text>
+                ) : (
+                  dealers.map((dealer) => {
+                    const checked = (dayDealers[date] ?? []).includes(dealer.id);
+                    return (
+                      <Pressable
+                        key={dealer.id}
+                        style={styles.checkRow}
+                        onPress={() => toggleDealer(date, dealer.id)}>
+                        <View style={[styles.box, checked && styles.boxOn]} />
+                        <Text style={styles.checkLabel}>{dealer.name}</Text>
+                      </Pressable>
+                    );
+                  })
+                )}
               </View>
             ))}
 
@@ -336,6 +339,7 @@ function AssignVisitModal({
         onClose={() => setShowEmployeePicker(false)}
         onSelect={(id) => {
           setEmployeeId(id);
+          setDayDealers({});
           setShowEmployeePicker(false);
         }}
       />
@@ -461,7 +465,6 @@ const styles = StyleSheet.create({
   },
   boxOn: { backgroundColor: Colors.brand, borderColor: Colors.brand },
   checkLabel: { color: Colors.heading, fontWeight: '600', flex: 1 },
-  copyLink: { color: Colors.brand, fontWeight: '700', marginTop: 4 },
   pickerBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
