@@ -8,6 +8,7 @@ export interface LeaveBalance {
   allocation_mode: string;
   is_active: boolean;
   balance: number;
+  used_days?: number;
 }
 
 export interface LeaveRequest {

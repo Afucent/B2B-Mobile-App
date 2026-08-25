@@ -65,7 +65,10 @@ const LEAVES_ADMIN_LINKS: TabNavLink[] = [
     title: 'Leave types',
     href: '/(admin)/leave/types',
     module: 'leave_types',
-    visible: (ctx) => ctx.canView('leave_types') || ctx.canManage('leave_types'),
+    visible: (ctx) =>
+      ctx.canView('leave_types') ||
+      ctx.canManage('leave_types') ||
+      ctx.canCreate('leave_types'),
   },
   {
     title: 'Leave requests',

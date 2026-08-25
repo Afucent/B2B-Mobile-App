@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { usePermissions } from '@/hooks/usePermissions';
 import {
   getLeaveCalendar,
   listActiveLeaveTypes,
@@ -37,6 +38,9 @@ export default function AdminLeaveCalendarScreen() {
 
 function TeamCalendarContent() {
   const insets = useSafeAreaInsets();
+  const { isOrgAdmin, canEdit, canCreate } = usePermissions();
+  const canViewAll =
+    isOrgAdmin || canEdit('leave_requests') || canCreate('leave_types');
   const [cursor, setCursor] = useState(() => new Date());
   const [data, setData] = useState<LeaveCalendarResponse | null>(null);
   const [types, setTypes] = useState<LeaveTypeAdmin[]>([]);
@@ -55,13 +59,18 @@ function TeamCalendarContent() {
 
   useFocusEffect(
     useCallback(() => {
-      void Promise.all([listActiveLeaveTypes(), listUsers(0, 100)])
-        .then(([typeItems, userData]) => {
-          setTypes(typeItems);
-          setEmployees(userData.items);
-        })
-        .catch(() => {});
-    }, []),
+      void listActiveLeaveTypes()
+        .then(setTypes)
+        .catch(() => setTypes([]));
+      if (canViewAll) {
+        void listUsers(0, 100)
+          .then((userData) => setEmployees(userData.items))
+          .catch(() => setEmployees([]));
+      } else {
+        setEmployees([]);
+        setEmployeeFilter('all');
+      }
+    }, [canViewAll]),
   );
 
   const loadCalendar = useCallback(async () => {
@@ -71,7 +80,8 @@ function TeamCalendarContent() {
       const res = await getLeaveCalendar({
         month: key,
         leave_type_id: typeFilter === 'all' ? undefined : typeFilter,
-        employee_id: employeeFilter === 'all' ? undefined : employeeFilter,
+        employee_id:
+          canViewAll && employeeFilter !== 'all' ? employeeFilter : undefined,
       });
       setData(res);
     } catch (err) {
@@ -79,7 +89,7 @@ function TeamCalendarContent() {
     } finally {
       setLoading(false);
     }
-  }, [key, typeFilter, employeeFilter]);
+  }, [key, typeFilter, employeeFilter, canViewAll]);
 
   useFocusEffect(
     useCallback(() => {
@@ -122,9 +132,13 @@ function TeamCalendarContent() {
 
   return (
     <View style={styles.flex}>
-      <ScreenHeader title="Team calendar" onBack={() => router.back()} />
+        <ScreenHeader title="Team calendar" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}>
-        <Text style={styles.subtitle}>Organisation leave — who is off and when.</Text>
+        <Text style={styles.subtitle}>
+          {canViewAll
+            ? 'Organisation leave — who is off and when.'
+            : 'Your leave only — pending and approved requests.'}
+        </Text>
 
         <View style={styles.monthNav}>
           <Pressable onPress={() => { setCursor(new Date(year, month - 1, 1)); setSelectedDay(1); }} hitSlop={8}>
@@ -145,12 +159,14 @@ function TeamCalendarContent() {
           </Pressable>
         </View>
 
-        <FilterSelect
-          label="Employee"
-          value={employeeFilter}
-          onChange={setEmployeeFilter}
-          options={[{ id: 'all', name: 'All employees' }, ...employees.map((e) => ({ id: e.id, name: e.name }))]}
-        />
+        {canViewAll ? (
+          <FilterSelect
+            label="Employee"
+            value={employeeFilter}
+            onChange={setEmployeeFilter}
+            options={[{ id: 'all', name: 'All employees' }, ...employees.map((e) => ({ id: e.id, name: e.name }))]}
+          />
+        ) : null}
         <FilterSelect
           label="Leave type"
           value={typeFilter}

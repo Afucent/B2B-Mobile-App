@@ -18,10 +18,15 @@ export interface LeaveRequestAdmin {
   id: string;
   employee_name?: string;
   leave_type_name?: string;
-  start_date: string;
-  end_date: string;
+  from_date: string;
+  to_date: string;
+  /** @deprecated use from_date */
+  start_date?: string;
+  /** @deprecated use to_date */
+  end_date?: string;
   status: string;
   reason?: string | null;
+  rejection_reason?: string | null;
 }
 
 export interface CalendarLeaveEntry {
@@ -81,10 +86,10 @@ export function approveLeaveRequest(id: string) {
   return apiRequest<LeaveRequestAdmin>(`/leave-requests/${id}/approve`, { method: 'PATCH' });
 }
 
-export function rejectLeaveRequest(id: string, reason?: string) {
+export function rejectLeaveRequest(id: string, rejectionReason: string) {
   return apiRequest<LeaveRequestAdmin>(`/leave-requests/${id}/reject`, {
     method: 'PATCH',
-    body: { reason: reason ?? null },
+    body: { rejection_reason: rejectionReason },
   });
 }
 

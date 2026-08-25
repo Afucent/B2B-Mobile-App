@@ -5,7 +5,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
 } from 'react-native';
@@ -27,7 +26,6 @@ import {
 } from '@/lib/leaveTypeForm';
 import { formatRoleName } from '@/lib/permissions';
 
-const CATEGORIES: LeaveTypeFormValues['category'][] = ['annual', 'sick', 'other'];
 const STATUSES = ['active', 'inactive'] as const;
 
 export default function AdminLeaveTypesScreen() {
@@ -98,7 +96,7 @@ export default function AdminLeaveTypesScreen() {
   }
 
   return (
-    <RequireModuleAccess module="leave_types">
+    <RequireModuleAccess module="leave_types" allowCreate>
       <View style={styles.flex}>
         <ScreenHeader title="Leave types" onBack={() => router.back()} />
         <FlatList
@@ -123,13 +121,6 @@ export default function AdminLeaveTypesScreen() {
                   error={errors.code}
                   autoCapitalize="characters"
                 />
-                <OptionRow
-                  label="Category *"
-                  options={CATEGORIES}
-                  value={values.category}
-                  onChange={(v) => setField('category', v as LeaveTypeFormValues['category'])}
-                  format={(v) => (v === 'other' ? 'Other (custom)' : v.charAt(0).toUpperCase() + v.slice(1))}
-                />
                 <TextField
                   label="Annual days *"
                   value={values.annualDays}
@@ -145,7 +136,8 @@ export default function AdminLeaveTypesScreen() {
                   format={(v) => v.charAt(0).toUpperCase() + v.slice(1)}
                 />
 
-                <Text style={styles.rolesLabel}>Available for roles (empty = all roles)</Text>
+                <Text style={styles.rolesLabel}>Available for roles</Text>
+                <Text style={styles.rolesHint}>Empty = available for all roles</Text>
                 <View style={styles.rolesBox}>
                   {roles.length === 0 ? (
                     <Text style={styles.meta}>No roles loaded.</Text>
@@ -163,31 +155,6 @@ export default function AdminLeaveTypesScreen() {
                   )}
                 </View>
 
-                <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>Carry forward</Text>
-                  <Switch
-                    value={values.carryForward}
-                    onValueChange={(v) => setField('carryForward', v)}
-                    trackColor={{ true: Colors.brand }}
-                  />
-                </View>
-                {values.carryForward ? (
-                  <TextField
-                    label="Carry forward max days *"
-                    value={values.carryForwardMax}
-                    onChangeText={(v) => setField('carryForwardMax', v)}
-                    error={errors.carryForwardMax}
-                    keyboardType="numeric"
-                  />
-                ) : null}
-                <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>Encashable</Text>
-                  <Switch
-                    value={values.encashable}
-                    onValueChange={(v) => setField('encashable', v)}
-                    trackColor={{ true: Colors.brand }}
-                  />
-                </View>
                 <PrimaryButton label="Add leave type" onPress={() => void addType()} loading={creating} />
               </PermissionGate>
 
@@ -203,11 +170,8 @@ export default function AdminLeaveTypesScreen() {
               <Text style={styles.sub}>
                 {[
                   item.code,
-                  item.category,
                   item.status,
                   item.annual_days != null ? `${item.annual_days} days/yr` : null,
-                  item.carry_forward ? 'carry fwd' : null,
-                  item.encashable ? 'encashable' : null,
                 ]
                   .filter(Boolean)
                   .join(' · ')}
@@ -267,6 +231,7 @@ const styles = StyleSheet.create({
   name: { fontWeight: '700', color: Colors.heading },
   sub: { color: Colors.muted, fontSize: 12, marginTop: 2 },
   rolesLabel: { fontSize: 12, fontWeight: '700', color: Colors.heading, marginTop: 4 },
+  rolesHint: { fontSize: 11, color: Colors.muted, marginTop: -4 },
   rolesBox: {
     borderWidth: 1,
     borderColor: Colors.border,
@@ -274,7 +239,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     maxHeight: 160,
   },
-  roleRow: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.border },
+  roleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+  },
   roleName: { color: Colors.heading, fontSize: 14 },
   checkbox: {
     width: 20,
@@ -287,10 +259,14 @@ const styles = StyleSheet.create({
   },
   checkboxOn: { backgroundColor: Colors.brand, borderColor: Colors.brand },
   checkMark: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 },
-  switchLabel: { color: Colors.heading, fontWeight: '600' },
   optionWrap: { gap: 6 },
-  optionLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, color: Colors.heading, textTransform: 'uppercase' },
+  optionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    color: Colors.heading,
+    textTransform: 'uppercase',
+  },
   optionRow: { gap: 8 },
   optionChip: {
     borderRadius: 999,
