@@ -38,9 +38,9 @@ export default function AdminLeaveCalendarScreen() {
 
 function TeamCalendarContent() {
   const insets = useSafeAreaInsets();
-  const { isOrgAdmin, canEdit, canCreate } = usePermissions();
+  const { isOrgAdmin, canEdit, canCreate, canView } = usePermissions();
   const canViewAll =
-    isOrgAdmin || canEdit('leave_requests') || canCreate('leave_types');
+    isOrgAdmin || canEdit('leave_requests') || canCreate('leave_types') || canView('users');
   const [cursor, setCursor] = useState(() => new Date());
   const [data, setData] = useState<LeaveCalendarResponse | null>(null);
   const [types, setTypes] = useState<LeaveTypeAdmin[]>([]);
@@ -210,7 +210,13 @@ function TeamCalendarContent() {
           {displayYmd(selectedIso)} · {dayLeaves.length} on leave
         </Text>
         {loading ? <Text style={styles.meta}>Loading calendar…</Text> : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? (
+          <Text style={styles.error}>
+            {error === 'Request failed'
+              ? 'Could not load leave calendar. Check team calendar permission or try again.'
+              : error}
+          </Text>
+        ) : null}
         {!loading && dayLeaves.length === 0 ? (
           <Text style={styles.meta}>No leave entries for this day.</Text>
         ) : (

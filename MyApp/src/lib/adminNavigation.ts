@@ -85,6 +85,7 @@ const LEAVE_LINKS: AdminNavLink[] = [
   },
   {
     title: 'Attendance',
+    subtitle: 'Clock in / clock out by day',
     href: '/(admin)/attendance',
     module: 'attendance',
   },

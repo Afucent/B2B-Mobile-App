@@ -82,8 +82,8 @@ const LEAVES_ADMIN_LINKS: TabNavLink[] = [
     module: 'team_calendar',
   },
   {
-    title: 'Attendance dashboard',
-    subtitle: 'Present, absent, on leave',
+    title: 'Attendance',
+    subtitle: 'Clock in / clock out by day',
     href: '/(admin)/attendance',
     module: 'attendance',
   },

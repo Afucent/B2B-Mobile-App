@@ -42,7 +42,7 @@ export default function LeaveManagementScreen() {
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}>
         <Text style={styles.subtitle}>
-          Manage leave types, approve requests, view team calendar, and attendance stats.
+          Manage leave types, approve requests, team calendar, and attendance clock-in/out.
         </Text>
 
         {sections.length === 0 ? (

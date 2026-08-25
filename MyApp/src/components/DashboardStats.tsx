@@ -36,9 +36,6 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
   const canUsers = canView('users');
   const canLive = canView('live_location');
   const canAttendance = canView('attendance');
-  const canLeaveRequests = canView('leave_requests');
-  const canOrg = canView('organization');
-  const canRbac = canView('role_library') || canView('permission_matrix');
 
   const [totalUsers, setTotalUsers] = useState<number | null>(null);
   const [activeUsers, setActiveUsers] = useState<number | null>(null);
@@ -144,8 +141,7 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
 
   const center = markers[0] ?? { latitude: 28.6139, longitude: 77.209 };
 
-  const hasAny =
-    canUsers || canAttendance || canLive || canLeaveRequests || canOrg || canRbac;
+  const hasAny = canUsers || canAttendance || canLive;
   if (!hasAny) return null;
 
   return (
@@ -189,10 +185,10 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
 
       {canAttendance ? (
         <View style={styles.card}>
-          <Pressable onPress={() => router.push('/(admin)/attendance')}>
+          <View>
             <Text style={styles.cardTitle}>Daily attendance</Text>
             <Text style={styles.cardSub}>Present · leave · absent</Text>
-          </Pressable>
+          </View>
           <View style={styles.rangeRow}>
             {(['today', 'yesterday', 'custom'] as AttendanceRange[]).map((key) => (
               <Pressable
@@ -280,37 +276,6 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
           <LiveLegend items={mapItems} />
         </View>
       ) : null}
-
-      <View style={styles.links}>
-        {canUsers || canRbac ? (
-          <LinkCard
-            title="Users & roles"
-            subtitle="Manage users, roles, and permissions"
-            onPress={() => router.push('/(app)/roles')}
-          />
-        ) : null}
-        {canLive ? (
-          <LinkCard
-            title="Live tracking"
-            subtitle="Full field map and employee detail"
-            onPress={() => router.push('/(admin)/live-tracking')}
-          />
-        ) : null}
-        {canLeaveRequests ? (
-          <LinkCard
-            title="Leave requests"
-            subtitle="Approve and review leave"
-            onPress={() => router.push('/(admin)/leave/requests')}
-          />
-        ) : null}
-        {canOrg ? (
-          <LinkCard
-            title="Edit organisation"
-            subtitle="Profile and workspace settings"
-            onPress={() => router.push('/(admin)/organization/profile')}
-          />
-        ) : null}
-      </View>
     </View>
   );
 }
@@ -328,23 +293,6 @@ function StatCard({
     <Pressable style={styles.statCard} onPress={onPress}>
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value ?? '—'}</Text>
-    </Pressable>
-  );
-}
-
-function LinkCard({
-  title,
-  subtitle,
-  onPress,
-}: {
-  title: string;
-  subtitle: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable style={styles.linkCard} onPress={onPress}>
-      <Text style={styles.linkTitle}>{title}</Text>
-      <Text style={styles.linkSub}>{subtitle}</Text>
     </Pressable>
   );
 }
@@ -526,14 +474,4 @@ const styles = StyleSheet.create({
   statusDot: { width: 10, height: 10, borderRadius: 5 },
   liveName: { fontWeight: '700', color: Colors.heading, fontSize: 13 },
   liveSub: { color: Colors.muted, fontSize: 11 },
-  links: { gap: Spacing.sm },
-  linkCard: {
-    backgroundColor: Colors.background,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  linkTitle: { fontWeight: '800', color: Colors.heading },
-  linkSub: { color: Colors.muted, fontSize: 12, marginTop: 2 },
 });

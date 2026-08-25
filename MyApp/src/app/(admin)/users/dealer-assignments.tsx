@@ -58,8 +58,8 @@ export default function DealerAssignmentsScreen() {
         <ScreenHeader title="Dealer assignment" onBack={() => router.back()} />
         <View style={styles.body}>
           <Text style={styles.hint}>
-            Tap a dealer to see assigned field users. Assign dealers from Create user or a user
-            profile.
+            Tap a dealer to see assigned field users. Assign dealers from Add user or Edit
+            employee (same as web).
           </Text>
           {loading ? <Text style={styles.meta}>Loading…</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}

@@ -42,6 +42,38 @@ export function getAttendanceDashboardSummary(date?: string) {
   return apiRequest<AttendanceSummary>(`/attendance/dashboard-summary${q}`);
 }
 
+export type AttendanceDayEntry = {
+  employee_id: string;
+  employee_name: string;
+  employee_initials?: string;
+  avatar_url?: string | null;
+  designation?: string | null;
+  attendance_record_id: string;
+  clock_in_time: string;
+  clock_out_time?: string | null;
+  working_hours?: number | null;
+  status?: string | null;
+  on_location: boolean;
+  last_latitude?: number | null;
+  last_longitude?: number | null;
+  last_address?: string | null;
+  last_captured_at?: string | null;
+};
+
+export type AttendanceDayBoard = {
+  date: string;
+  items: AttendanceDayEntry[];
+  clocked_in: number;
+  clocked_out?: number;
+  on_location: number;
+  off_location: number;
+};
+
+export function getAttendanceDayBoard(date?: string) {
+  const q = date ? `?date=${encodeURIComponent(date)}` : '';
+  return apiRequest<AttendanceDayBoard>(`/attendance/day-board${q}`);
+}
+
 export function getLiveTrackingPanel() {
   return apiRequest<LiveTrackingPanel>('/attendance/panel');
 }
