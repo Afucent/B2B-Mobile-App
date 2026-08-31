@@ -15,15 +15,22 @@ import {
   type LiveTrackingPanel,
 } from '@/lib/api/fieldOps';
 import { getUserFilterOptions, getUserSummary } from '@/lib/api/users';
-import { ymd } from '@/lib/leaveUi';
+import { formatLiveStatus } from '@/lib/format';
 
 type AttendanceRange = 'today' | 'yesterday' | 'custom';
+
+function ymd(date: Date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
 const STATUS_COLOR: Record<string, string> = {
   active: '#2E7D32',
   in_transit: '#1976D2',
   idle: '#ED6C02',
-  gps_off: '#D32F2F',
+  gps_off: '#ED6C02',
   offline: '#757575',
 };
 
@@ -389,7 +396,9 @@ function LiveLegend({ items }: { items: LiveEmployeeRow[] }) {
           <View style={{ flex: 1 }}>
             <Text style={styles.liveName}>{item.employee_name}</Text>
             <Text style={styles.liveSub} numberOfLines={1}>
-              {[item.status, item.city, item.last_address].filter(Boolean).join(' · ')}
+              {[formatLiveStatus(item.status) || item.status, item.city, item.last_address]
+                .filter(Boolean)
+                .join(' · ')}
             </Text>
           </View>
         </Pressable>

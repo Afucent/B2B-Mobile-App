@@ -5,6 +5,7 @@ export const Colors = {
   brandSoft: '#E0F2F1',
   accent: '#E88D67',
   accentCoral: '#D4735A',
+  /** Same as brand — splash must stay green, never accent/stamp orange. */
   splash: '#1A3A3A',
   background: '#FFFFFF',
   surface: '#F4F8F7',

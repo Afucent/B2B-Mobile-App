@@ -59,7 +59,10 @@ export default function StartTrackingScreen() {
 
   useEffect(() => {
     void getFieldOperationsSettings()
-      .then((settings) => setPingMinutes(Math.max(settings.gps_ping_interval_minutes ?? 20, 20)))
+      .then((settings) => {
+        const orgPing = settings.gps_ping_interval_minutes ?? 20;
+        setPingMinutes(Math.min(Math.max(orgPing, 1), 60));
+      })
       .catch(() => undefined);
   }, []);
 
@@ -98,7 +101,13 @@ export default function StartTrackingScreen() {
         setLoc(next);
         await pingLocation(next.latitude, next.longitude, next.accuracy ?? undefined);
         await refresh();
-      } catch {
+      } catch (err) {
+        // 429 = ping interval not elapsed yet; keep showing last known location.
+        const status =
+          err && typeof err === 'object' && 'status' in err
+            ? Number((err as { status: number }).status)
+            : 0;
+        if (status === 429) return;
         /* ignore transient GPS/API errors */
       }
     }

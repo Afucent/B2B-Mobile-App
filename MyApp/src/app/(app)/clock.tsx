@@ -17,9 +17,13 @@ import {
   type TodayStatus,
 } from '@/lib/api/attendance';
 import { getLeaveBalance, getMyLeaveRequests, type LeaveRequest } from '@/lib/api/leave';
+import {
+  listLeaveRequestsAdmin,
+  type LeaveRequestAdmin,
+} from '@/lib/api/leaveAdmin';
 import { getFieldOperationsSettings } from '@/lib/api/org';
 import { employeeCode, formatClock, formatDate } from '@/lib/format';
-import { displayYmdRange, leaveStatusMeta } from '@/lib/leaveUi';
+import { displayYmdRange, leaveStatusMeta, ymd } from '@/lib/leaveUi';
 import { routeForLocationAction } from '@/lib/locationGate';
 import { isFieldTrackingEnabled } from '@/lib/permissions';
 import { canAccessLeaveManagement } from '@/lib/tabNavigation';
@@ -49,7 +53,14 @@ function ClockContent() {
   const showLeaveManagement = canAccessLeaveManagement(permCtx);
   const [today, setToday] = useState<TodayStatus | null>(null);
   const [leaveDays, setLeaveDays] = useState(0);
-  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [requests, setRequests] = useState<
+    Array<{
+      id: string;
+      title: string;
+      dates: string;
+      status: string;
+    }>
+  >([]);
   const [missedOpen, setMissedOpen] = useState(false);
   const [settings, setSettings] = useState<Awaited<
     ReturnType<typeof getFieldOperationsSettings>
@@ -62,14 +73,38 @@ function ClockContent() {
 
   const load = useCallback(async () => {
     if (!user) return;
+    if (isOrgAdmin) {
+      setToday(null);
+      setMissedOpen(false);
+      const adminReqs = await listLeaveRequestsAdmin().catch(() => ({ items: [] as LeaveRequestAdmin[] }));
+      setRequests(
+        (adminReqs.items ?? []).slice(0, 5).map((item) => ({
+          id: item.id,
+          title: [item.employee_name, item.leave_type_name ?? 'Leave'].filter(Boolean).join(' · '),
+          dates: displayYmdRange(
+            item.from_date || item.start_date || ymd(new Date()),
+            item.to_date || item.end_date || item.from_date || item.start_date || ymd(new Date()),
+          ),
+          status: item.status,
+        })),
+      );
+      return;
+    }
     const status = await getTodayStatus().catch(() => null);
     setToday(status);
     const orgSettings = await getFieldOperationsSettings().catch(() => null);
     setSettings(orgSettings);
     const balance = await getLeaveBalance().catch(() => null);
     setLeaveDays(balance?.items.reduce((sum, item) => sum + (item.balance || 0), 0) ?? 0);
-    const mine = await getMyLeaveRequests().catch(() => []);
-    setRequests(mine.slice(0, 5));
+    const mine = await getMyLeaveRequests().catch(() => [] as LeaveRequest[]);
+    setRequests(
+      mine.slice(0, 5).map((item) => ({
+        id: item.id,
+        title: item.leave_type_name ?? 'Leave',
+        dates: displayYmdRange(item.from_date, item.to_date),
+        status: item.status,
+      })),
+    );
 
     const existing = await getMissedClockOut();
     if (existing?.dismissed) {
@@ -98,7 +133,7 @@ function ClockContent() {
         setMissedOpen(false);
       }
     }
-  }, [user]);
+  }, [user, isOrgAdmin]);
 
   useFocusEffect(
     useCallback(() => {
@@ -128,9 +163,11 @@ function ClockContent() {
     <ScrollView
       style={styles.flex}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}>
-      <Text style={styles.screenTitle}>Clock & My Leave</Text>
+      <Text style={styles.screenTitle}>
+        {isOrgAdmin ? 'Leave & Attendance' : 'Clock & My Leave'}
+      </Text>
 
-      {onDuty ? (
+      {!isOrgAdmin && onDuty ? (
         <View style={[styles.tracking, !trackingActive && styles.trackingMuted]}>
           <Ionicons
             name={trackingActive ? 'navigate' : 'time-outline'}
@@ -143,6 +180,7 @@ function ClockContent() {
         </View>
       ) : null}
 
+      {!isOrgAdmin ? (
       <View style={styles.card}>
         <View style={styles.statusRow}>
           <View style={styles.statusDotWrap}>
@@ -157,8 +195,9 @@ function ClockContent() {
             <Text style={styles.metricLabel}>Clocked in since</Text>
             <Text style={styles.metricValueLg}>{formatClock(record.clock_in_time)}</Text>
             <Text style={styles.hint}>
-              Attendance is already marked. Open Start Tracking to open the map and begin live
-              location.
+              {trackingActive
+                ? 'Live location is active. Open End Tracking to stop, or Clock Out when done.'
+                : 'Attendance is already marked. Open Start Tracking to open the map and begin live location.'}
             </Text>
             {canTrack ? (
               <View style={styles.actionRow}>
@@ -199,8 +238,9 @@ function ClockContent() {
           </>
         )}
       </View>
+      ) : null}
 
-      {missedOpen ? (
+      {!isOrgAdmin && missedOpen ? (
         <Pressable style={styles.missed} onPress={() => router.push('/missed-clock-out')}>
           <Ionicons name="warning" size={18} color={Colors.pendingText} />
           <View style={{ flex: 1 }}>
@@ -212,13 +252,23 @@ function ClockContent() {
       ) : null}
 
       <View style={styles.quickRow}>
-        <Pressable style={styles.quickCard} onPress={() => router.push('/(app)/calendar')}>
+        <Pressable
+          style={styles.quickCard}
+          onPress={() =>
+            router.push(isOrgAdmin ? '/(admin)/attendance' : '/(app)/calendar')
+          }>
           <Ionicons name="calendar-outline" size={22} color={Colors.brand} />
-          <Text style={styles.quickLabel}>My attendance calendar</Text>
+          <Text style={styles.quickLabel}>{isOrgAdmin ? 'Attendance' : 'My attendance calendar'}</Text>
         </Pressable>
-        <Pressable style={styles.quickCard} onPress={() => router.push('/leave-balance')}>
+        <Pressable
+          style={styles.quickCard}
+          onPress={() =>
+            router.push(isOrgAdmin ? '/(admin)/leave/balances' : '/leave-balance')
+          }>
           <Ionicons name="wallet-outline" size={22} color={Colors.brand} />
-          <Text style={styles.quickLabel}>Leave balance · {leaveDays}d</Text>
+          <Text style={styles.quickLabel}>
+            {isOrgAdmin ? 'Leave balance' : `Leave balance · ${leaveDays}d`}
+          </Text>
         </Pressable>
       </View>
 
@@ -235,26 +285,40 @@ function ClockContent() {
         </Pressable>
       ) : null}
 
-      <Pressable style={styles.applyBtn} onPress={() => router.push('/apply-leave')}>
-        <Text style={styles.applyText}>+ Apply for leave</Text>
-      </Pressable>
+      {!isOrgAdmin ? (
+        <Pressable style={styles.applyBtn} onPress={() => router.push('/apply-leave')}>
+          <Text style={styles.applyText}>+ Apply for leave</Text>
+        </Pressable>
+      ) : null}
 
-      <Text style={styles.sectionTitle}>My recent leave requests</Text>
+      <Pressable
+        onPress={() => {
+          if (isOrgAdmin) router.push('/(admin)/leave/requests');
+        }}>
+        <Text style={styles.sectionTitle}>
+          {isOrgAdmin ? 'Leave requests' : 'My recent leave requests'}
+        </Text>
+      </Pressable>
       {requests.length === 0 ? (
         <Text style={styles.meta}>No leave requests yet.</Text>
       ) : (
         requests.map((item) => {
           const meta = leaveStatusMeta(item.status);
           return (
-            <View key={item.id} style={styles.leaveRow}>
+            <Pressable
+              key={item.id}
+              style={styles.leaveRow}
+              onPress={() => {
+                if (isOrgAdmin) router.push('/(admin)/leave/requests');
+              }}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.leaveName}>{item.leave_type_name ?? 'Leave'}</Text>
-                <Text style={styles.leaveDates}>{displayYmdRange(item.from_date, item.to_date)}</Text>
+                <Text style={styles.leaveName}>{item.title}</Text>
+                <Text style={styles.leaveDates}>{item.dates}</Text>
               </View>
               <View style={[styles.badge, { backgroundColor: meta.bg }]}>
                 <Text style={[styles.badgeText, { color: meta.color }]}>{meta.label}</Text>
               </View>
-            </View>
+            </Pressable>
           );
         })
       )}

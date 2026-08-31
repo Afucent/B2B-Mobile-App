@@ -8,6 +8,7 @@ import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { getLiveTrackingPanel, type LiveEmployeeRow } from '@/lib/api/fieldOps';
+import { formatLiveStatus } from '@/lib/format';
 
 export default function AdminLiveTrackingScreen() {
   const [items, setItems] = useState<LiveEmployeeRow[]>([]);
@@ -81,10 +82,12 @@ export default function AdminLiveTrackingScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={styles.name}>{item.employee_name}</Text>
                   <Text style={styles.sub}>
-                    {[item.designation, item.status, item.last_address].filter(Boolean).join(' · ')}
+                    {[item.designation, formatLiveStatus(item.status) || item.status, item.last_address]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </Text>
                 </View>
-                <Text style={styles.link}>Live</Text>
+                <Text style={styles.link}>Logs</Text>
               </Pressable>
             )}
           />

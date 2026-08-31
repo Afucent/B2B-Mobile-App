@@ -78,6 +78,52 @@ export function getLiveTrackingPanel() {
   return apiRequest<LiveTrackingPanel>('/attendance/panel');
 }
 
+export type EmployeeLiveDetail = {
+  employee_id: string;
+  employee_name?: string;
+  employee_initials?: string;
+  avatar_url?: string | null;
+  designation?: string | null;
+  status?: string | null;
+  status_label?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+  last_ping_at?: string | null;
+  last_ping_label?: string | null;
+  clock_in_time?: string | null;
+  attendance_record_id?: string | null;
+  gps_status?: string | null;
+};
+
 export function getEmployeeLiveDetail(employeeId: string) {
-  return apiRequest<Record<string, unknown>>(`/attendance/live/${employeeId}`);
+  return apiRequest<EmployeeLiveDetail>(`/attendance/live/${employeeId}`);
+}
+
+export type LocationTrailPoint = {
+  id: string;
+  attendance_record_id: string;
+  employee_id: string;
+  captured_at: string;
+  latitude: number;
+  longitude: number;
+  address: string | null;
+  accuracy_meters: number | null;
+  source: string;
+};
+
+export type LocationTrail = {
+  attendance_record_id: string | null;
+  employee_id: string;
+  points: LocationTrailPoint[];
+  date?: string | null;
+};
+
+export function getAttendanceTrail(recordId: string) {
+  return apiRequest<LocationTrail>(`/attendance/records/${recordId}/trail`);
+}
+
+export function getEmployeeTrailByDate(employeeId: string, date?: string) {
+  const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+  return apiRequest<LocationTrail>(`/attendance/live/${employeeId}/trail${qs}`);
 }

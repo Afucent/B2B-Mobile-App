@@ -97,6 +97,20 @@ export function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
+export function isMobileNumber(value: string) {
+  return /^\d{10}$/.test(value.trim().replace(/\s+/g, ''));
+}
+
+export function formatLiveStatus(status?: string | null) {
+  const key = (status ?? '').toLowerCase();
+  if (key === 'gps_off') return 'Last ping stale';
+  if (key === 'in_transit') return 'In transit';
+  if (key === 'active') return 'Active';
+  if (key === 'idle') return 'Idle';
+  if (key === 'offline') return 'Offline';
+  return status ? status.replace(/_/g, ' ') : '';
+}
+
 export function passwordChecks(password: string) {
   return {
     length: password.length >= 8,

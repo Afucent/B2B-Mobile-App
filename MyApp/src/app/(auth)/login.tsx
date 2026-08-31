@@ -8,6 +8,7 @@ import { TextField } from '@/components/ui/TextField';
 import { APP_VERSION, Colors } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { ApiRequestError } from '@/lib/api/client';
+import { isEmail, isMobileNumber } from '@/lib/format';
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
@@ -16,7 +17,12 @@ export default function LoginScreen() {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ company?: string; password?: string; form?: string }>({});
+  const [errors, setErrors] = useState<{
+    company?: string;
+    identifier?: string;
+    password?: string;
+    form?: string;
+  }>({});
 
   useEffect(() => {
     if (savedCode) setCompanyCode(savedCode);
@@ -28,13 +34,24 @@ export default function LoginScreen() {
 
   async function onSubmit() {
     const code = companyCode.trim();
+    const id = identifier.trim();
     const next: typeof errors = {};
     if (!/^\d{6}$/.test(code)) {
-      next.company = 'Company code not found – check with your admin';
+      next.company = 'Enter a valid 6-digit company code.';
     }
-    if (!identifier.trim()) next.form = 'Enter your email or mobile.';
-    if (!password) next.password = 'Incorrect password';
-    if (next.company || next.form || next.password) {
+    if (!id) {
+      next.identifier = 'Enter your email or mobile.';
+    } else if (id.includes('@')) {
+      if (!isEmail(id)) next.identifier = 'Enter a valid email.';
+    } else if (!isMobileNumber(id)) {
+      next.identifier = 'Enter a valid 10-digit mobile number.';
+    }
+    if (!password) {
+      next.password = 'Password is required.';
+    } else if (password.length < 8) {
+      next.password = 'Password must be at least 8 characters.';
+    }
+    if (next.company || next.identifier || next.password) {
       setErrors(next);
       return;
     }
@@ -91,9 +108,9 @@ export default function LoginScreen() {
           <TextField
             label="Company code"
             value={companyCode}
-            onChangeText={setCompanyCode}
+            onChangeText={(v) => setCompanyCode(v.replace(/\D/g, '').slice(0, 6))}
             placeholder="e.g. 100001"
-            autoCapitalize="characters"
+            keyboardType="numeric"
             error={errors.company}
           />
           <Text style={styles.hint}>Provided by your organization</Text>
@@ -104,6 +121,7 @@ export default function LoginScreen() {
             onChangeText={setIdentifier}
             placeholder="you@company.com"
             keyboardType="email-address"
+            error={errors.identifier}
           />
 
           <TextField

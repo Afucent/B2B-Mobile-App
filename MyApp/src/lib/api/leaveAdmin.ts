@@ -105,3 +105,18 @@ export function getLeaveCalendar(params: {
   if (params.region_id) q.set('region_id', params.region_id);
   return apiRequest<LeaveCalendarResponse>(`/leave-calendar?${q.toString()}`);
 }
+
+export type OrgLeaveBalanceRow = {
+  employee_id: string;
+  employee_name: string;
+  leave_type_id: string;
+  leave_type_name: string;
+  leave_type_code: string;
+  annual_days?: number | null;
+  balance: number;
+  used_days?: number;
+};
+
+export function listOrgLeaveBalances() {
+  return apiRequest<{ items: OrgLeaveBalanceRow[] }>('/leave/org-balances');
+}
