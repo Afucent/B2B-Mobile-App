@@ -1,0 +1,57 @@
+export const Colors = {
+  brand: '#1A3A3A',
+  brandDark: '#0D5C5C',
+  brandLight: '#245050',
+  brandSoft: '#E0F2F1',
+  accent: '#E88D67',
+  accentCoral: '#D4735A',
+  /** Same as brand — splash must stay green, never accent/stamp orange. */
+  splash: '#1A3A3A',
+  background: '#FFFFFF',
+  surface: '#F4F8F7',
+  surfaceWarm: '#F7F3E9',
+  heading: '#1D2939',
+  text: '#344054',
+  muted: '#667085',
+  border: '#E5E7EB',
+  borderLight: '#F3F4F6',
+  danger: '#DC2626',
+  dangerBg: '#FEE2E2',
+  dangerText: '#B91C1C',
+  dangerBorder: '#FECACA',
+  success: '#059669',
+  successBg: '#D1FAE5',
+  successText: '#047857',
+  pendingBg: '#FEF3C7',
+  pendingText: '#B45309',
+  visitedBg: '#D1FAE5',
+  visitedText: '#047857',
+  trackingBg: '#D1FAE5',
+  trackingText: '#047857',
+  stamp: '#E88D67',
+  tabInactive: '#94A3B8',
+  switchOn: '#1A3A3A',
+  absentBg: '#FEE2E2',
+  leaveBorder: '#1A3A3A',
+  infoBg: '#E0F2F1',
+  infoText: '#0D5C5C',
+  mapOverlay: '#1A3A3A',
+} as const;
+
+export const Spacing = {
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+} as const;
+
+export const Radius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  pill: 999,
+} as const;
+
+export const APP_VERSION = '2.4';
