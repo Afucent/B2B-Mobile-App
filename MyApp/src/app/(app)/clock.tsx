@@ -21,7 +21,8 @@ import {
   listLeaveRequestsAdmin,
   type LeaveRequestAdmin,
 } from '@/lib/api/leaveAdmin';
-import { getFieldOperationsSettings } from '@/lib/api/org';
+import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
+import { formatShiftRange } from '@/lib/fieldOpsSettingsUi';
 import { employeeCode, formatClock, formatDate } from '@/lib/format';
 import { displayYmdRange, leaveStatusMeta, ymd } from '@/lib/leaveUi';
 import { routeForLocationAction } from '@/lib/locationGate';
@@ -62,9 +63,7 @@ function ClockContent() {
     }>
   >([]);
   const [missedOpen, setMissedOpen] = useState(false);
-  const [settings, setSettings] = useState<Awaited<
-    ReturnType<typeof getFieldOperationsSettings>
-  > | null>(null);
+  const { settings, refreshSettings } = useFieldOpsSettings();
 
   const canTrack =
     canCreate('user_tracking') ||
@@ -92,8 +91,6 @@ function ClockContent() {
     }
     const status = await getTodayStatus().catch(() => null);
     setToday(status);
-    const orgSettings = await getFieldOperationsSettings().catch(() => null);
-    setSettings(orgSettings);
     const balance = await getLeaveBalance().catch(() => null);
     setLeaveDays(balance?.items.reduce((sum, item) => sum + (item.balance || 0), 0) ?? 0);
     const mine = await getMyLeaveRequests().catch(() => [] as LeaveRequest[]);
@@ -122,8 +119,8 @@ function ClockContent() {
         await saveMissedClockOut({
           id: autoClosed.id,
           date: String(autoClosed.date),
-          expectedOut: orgSettings?.shift_end_time
-            ? formatClock(new Date(`1970-01-01T${orgSettings.shift_end_time}:00`).toISOString())
+          expectedOut: settings?.shift_end_time
+            ? formatClock(new Date(`1970-01-01T${settings.shift_end_time}:00`).toISOString())
             : '06:00 PM',
           autoOut: formatClock(autoClosed.clock_out_time),
           status: 'FLAGGED_REVIEW',
@@ -133,21 +130,19 @@ function ClockContent() {
         setMissedOpen(false);
       }
     }
-  }, [user, isOrgAdmin]);
+  }, [user, isOrgAdmin, settings?.shift_end_time]);
 
   useFocusEffect(
     useCallback(() => {
+      void refreshSettings();
       void load();
-    }, [load]),
+    }, [load, refreshSettings]),
   );
 
   const onDuty = Boolean(today?.is_clocked_in);
   const record: AttendanceRecord | null = today?.record ?? null;
   const trackingActive = Boolean(today?.tracking_active);
-  const shiftLabel =
-    settings?.shift_start_time && settings?.shift_end_time
-      ? `${formatClock(new Date(`1970-01-01T${settings.shift_start_time}:00`).toISOString())}–${formatClock(new Date(`1970-01-01T${settings.shift_end_time}:00`).toISOString())}`
-      : 'Shift settings unavailable';
+  const shiftLabel = formatShiftRange(settings);
 
   async function goWithLocation(next: '/clock-in' | '/clock-out' | '/start-tracking') {
     const block = await routeForLocationAction(next);

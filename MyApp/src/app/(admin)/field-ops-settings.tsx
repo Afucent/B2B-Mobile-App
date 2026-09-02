@@ -1,7 +1,9 @@
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, StyleSheet, Switch, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
@@ -24,6 +26,17 @@ const WEEKDAYS: { key: string; label: string }[] = [
   { key: 'saturday', label: 'Sat' },
   { key: 'sunday', label: 'Sun' },
 ];
+
+function numField(
+  value: number | undefined,
+  onChange: (v: number | undefined) => void,
+) {
+  return {
+    value: value != null ? String(value) : '',
+    onChangeText: (v: string) => onChange(v ? Number(v) : undefined),
+    keyboardType: 'numeric' as const,
+  };
+}
 
 export default function FieldOpsSettingsScreen() {
   const { canEdit } = usePermissions();
@@ -60,9 +73,14 @@ export default function FieldOpsSettingsScreen() {
         await updateFieldOperationsSettings({
           shift_start_time: form.shift_start_time,
           shift_end_time: form.shift_end_time,
+          clock_in_window_minutes: form.clock_in_window_minutes,
           auto_clock_out_enabled: Boolean(form.auto_clock_out_enabled),
           working_days: form.working_days ?? [],
-          clock_in_geofence_radius_m: form.clock_in_geofence_radius_m,
+          late_clock_in_threshold_minutes: form.late_clock_in_threshold_minutes,
+          early_clock_out_threshold_minutes: form.early_clock_out_threshold_minutes,
+          gps_ping_interval_minutes: form.gps_ping_interval_minutes,
+          gps_off_threshold_minutes: form.gps_off_threshold_minutes,
+          location_accuracy_threshold_m: form.location_accuracy_threshold_m,
         }),
       );
       Alert.alert('Saved', 'Field ops settings updated.');
@@ -77,16 +95,19 @@ export default function FieldOpsSettingsScreen() {
     <RequireModuleAccess module="organization">
       <View style={styles.flex}>
         <ScreenHeader title="Field ops settings" onBack={() => router.back()} />
-        <ScrollView contentContainerStyle={styles.body}>
+        <KeyboardSafeScrollView contentContainerStyle={styles.body}>
+          <Text style={styles.sectionTitle}>Shift configuration</Text>
           <TextField
             label="Shift start (HH:MM)"
             value={form.shift_start_time ?? ''}
             onChangeText={(v) => patch({ shift_start_time: v })}
+            editable={editable}
           />
           <TextField
             label="Shift end (HH:MM)"
             value={form.shift_end_time ?? ''}
             onChangeText={(v) => patch({ shift_end_time: v })}
+            editable={editable}
           />
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Working days</Text>
@@ -108,6 +129,11 @@ export default function FieldOpsSettingsScreen() {
               })}
             </View>
           </View>
+          <TextField
+            label="Clock-in window (mins before shift)"
+            {...numField(form.clock_in_window_minutes, (v) => patch({ clock_in_window_minutes: v }))}
+            editable={editable}
+          />
           <View style={styles.switchRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.switchLabel}>Auto clock-out</Text>
@@ -122,15 +148,50 @@ export default function FieldOpsSettingsScreen() {
               trackColor={{ true: Colors.switchOn }}
             />
           </View>
+
+          <Text style={styles.sectionTitle}>Threshold settings</Text>
           <TextField
-            label="Clock-in geofence (m)"
-            value={form.clock_in_geofence_radius_m != null ? String(form.clock_in_geofence_radius_m) : ''}
-            onChangeText={(v) => patch({ clock_in_geofence_radius_m: v ? Number(v) : undefined })}
-            keyboardType="numeric"
+            label="Late clock-in threshold (mins)"
+            {...numField(form.late_clock_in_threshold_minutes, (v) =>
+              patch({ late_clock_in_threshold_minutes: v }),
+            )}
+            editable={editable}
           />
+          <TextField
+            label="Early clock-out threshold (mins)"
+            {...numField(form.early_clock_out_threshold_minutes, (v) =>
+              patch({ early_clock_out_threshold_minutes: v }),
+            )}
+            editable={editable}
+          />
+
+          <Text style={styles.sectionTitle}>GPS tracking settings</Text>
+          <TextField
+            label="GPS ping interval (mins)"
+            {...numField(form.gps_ping_interval_minutes, (v) =>
+              patch({ gps_ping_interval_minutes: v }),
+            )}
+            editable={editable}
+          />
+          <TextField
+            label="GPS-off threshold (mins)"
+            {...numField(form.gps_off_threshold_minutes, (v) => patch({ gps_off_threshold_minutes: v }))}
+            editable={editable}
+          />
+          <Text style={styles.hint}>
+            Must be greater than or equal to GPS ping interval.
+          </Text>
+          <TextField
+            label="Location accuracy threshold (meters)"
+            {...numField(form.location_accuracy_threshold_m, (v) =>
+              patch({ location_accuracy_threshold_m: v }),
+            )}
+            editable={editable}
+          />
+
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {editable ? <PrimaryButton label="Save" onPress={() => void save()} loading={busy} /> : null}
-        </ScrollView>
+        </KeyboardSafeScrollView>
       </View>
     </RequireModuleAccess>
   );
@@ -139,6 +200,7 @@ export default function FieldOpsSettingsScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
   body: { padding: Spacing.md, gap: Spacing.md, paddingBottom: Spacing.xl },
+  sectionTitle: { fontWeight: '800', color: Colors.heading, fontSize: 15, marginTop: 4 },
   card: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md,

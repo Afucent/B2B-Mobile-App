@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
 import { Colors } from '@/constants/theme';
@@ -42,9 +43,9 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={styles.flex}>
       <ScreenHeader title="Reset password" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
         {verified ? (
           <View style={styles.verified}>
             <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
@@ -84,8 +85,8 @@ export default function ResetPasswordScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton label="Reset password" onPress={() => void onReset()} loading={loading} disabled={!verified} />
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardSafeScrollView>
+    </View>
   );
 }
 

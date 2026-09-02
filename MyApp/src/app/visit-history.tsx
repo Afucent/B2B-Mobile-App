@@ -13,6 +13,7 @@ import { getMyVisitHistory, getVisitHistory, type FieldVisit } from '@/lib/api/v
 import { listUsers, type AdminUser } from '@/lib/api/users';
 import { formatClock, formatDate } from '@/lib/format';
 import { ymd } from '@/lib/leaveUi';
+import { resolveMediaUrl } from '@/lib/mediaUrl';
 
 export default function VisitHistoryScreen() {
   const { canView } = usePermissions();
@@ -236,9 +237,12 @@ function VisitHistoryContent({ admin }: { admin: boolean }) {
 
               <Text style={styles.notesLabel}>Notes</Text>
               <Text style={styles.notes}>{item.notes?.trim() ? item.notes : '—'}</Text>
-              {item.photo_url ? (
-                <Image source={{ uri: item.photo_url }} style={styles.photo} contentFit="cover" />
-              ) : null}
+              {(() => {
+                const photoSrc = resolveMediaUrl(item.photo_url);
+                return photoSrc ? (
+                  <Image source={{ uri: photoSrc }} style={styles.photo} contentFit="cover" />
+                ) : null;
+              })()}
             </View>
           );
         }}

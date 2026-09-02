@@ -1,8 +1,9 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
 import { Colors, Radius } from '@/constants/theme';
@@ -45,9 +46,9 @@ export default function RequestCorrectionScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={styles.flex}>
       <ScreenHeader title="Request Correction" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
         <Text style={styles.copy}>
           Request a correction for a missed or incorrect attendance entry. Corrections require manager validation.
         </Text>
@@ -66,8 +67,8 @@ export default function RequestCorrectionScreen() {
           <Text style={styles.noteText}>Requires manager approval. You will be notified once the decision is logged.</Text>
         </View>
         <PrimaryButton label="Submit Request" onPress={() => void onSubmit()} loading={saving} />
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardSafeScrollView>
+    </View>
   );
 }
 

@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { useKeyboardScroll } from '@/components/ui/KeyboardSafeScrollView';
 import { Colors, Radius } from '@/constants/theme';
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
   keyboardType?: 'default' | 'email-address' | 'numeric';
   secureTextEntry?: boolean;
   autoCorrect?: boolean;
+  editable?: boolean;
 }
 
 export function TextField({
@@ -26,11 +28,27 @@ export function TextField({
   keyboardType = 'default',
   secureTextEntry,
   autoCorrect = false,
+  editable = true,
 }: Props) {
   const [hidden, setHidden] = useState(Boolean(secureTextEntry));
+  const wrapRef = useRef<View>(null);
+  const keyboardScroll = useKeyboardScroll();
+
+  const measureAndScroll = useCallback(() => {
+    if (!keyboardScroll) return;
+    wrapRef.current?.measureInWindow((_x, y, _w, h) => {
+      keyboardScroll.scrollField(y, h);
+    });
+  }, [keyboardScroll]);
+
+  const handleFocus = useCallback(() => {
+    if (!keyboardScroll) return;
+    keyboardScroll.registerField(measureAndScroll);
+    measureAndScroll();
+  }, [keyboardScroll, measureAndScroll]);
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} ref={wrapRef} collapsable={false}>
       <Text style={styles.label}>{label}</Text>
       <View style={[styles.inputWrap, error ? styles.inputError : null]}>
         <TextInput
@@ -42,6 +60,8 @@ export function TextField({
           autoCorrect={autoCorrect}
           keyboardType={keyboardType}
           secureTextEntry={hidden}
+          editable={editable}
+          onFocus={handleFocus}
           style={styles.input}
         />
         {secureTextEntry ? (

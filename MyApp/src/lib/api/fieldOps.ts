@@ -6,6 +6,7 @@ export interface AttendanceSummary {
   on_leave: number;
   absent: number;
   total_users?: number;
+  scope?: 'org' | 'self';
   /** @deprecated backend may omit; prefer total_users */
   total_employees?: number;
   clocked_in?: number;

@@ -2,9 +2,11 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import FieldOpsSettingsSummary from '@/components/FieldOpsSettingsSummary';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
+import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
 import { clockIn, getTodayStatus } from '@/lib/api/attendance';
 import { formatClock, formatLongDate } from '@/lib/format';
 import { requestLocation } from '@/lib/location';
@@ -13,6 +15,7 @@ export default function ClockInScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(new Date());
+  const { settings, loading: settingsLoading } = useFieldOpsSettings();
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -79,6 +82,13 @@ export default function ClockInScreen() {
         <Text style={styles.timeLabel}>Current Time</Text>
         <Text style={styles.time}>{formatClock(now.toISOString())}</Text>
         <Text style={styles.date}>{formatLongDate(now)}</Text>
+
+        <FieldOpsSettingsSummary
+          settings={settings}
+          loading={settingsLoading}
+          title="Shift rules for clock-in"
+          compact
+        />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton label="Clock In" onPress={() => void onClockIn()} loading={loading} />

@@ -6,6 +6,10 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { LinkButton } from '@/components/ui/LinkButton';
+import {
+  KeyboardSafeScrollView,
+  useScrollFieldIntoView,
+} from '@/components/ui/KeyboardSafeScrollView';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
@@ -18,6 +22,7 @@ export default function VisitNotesScreen() {
   const [photo, setPhoto] = useState<string | undefined>();
   const [meta, setMeta] = useState({ name: 'Dealer', time: '' });
   const [saving, setSaving] = useState(false);
+  const notesField = useScrollFieldIntoView();
 
   useEffect(() => {
     if (!visitId) return;
@@ -55,7 +60,7 @@ export default function VisitNotesScreen() {
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Visit Notes" onBack={() => router.back()} />
-      <View style={styles.body}>
+      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
         <View style={styles.chip}>
           <Ionicons name="location" size={14} color={Colors.brand} />
           <Text style={styles.chipText}>
@@ -63,14 +68,17 @@ export default function VisitNotesScreen() {
           </Text>
         </View>
         <Text style={styles.label}>Notes</Text>
-        <TextInput
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="What happened during this visit? Products discussed, orders taken, issues raised..."
-          placeholderTextColor={Colors.muted}
-          multiline
-          style={styles.area}
-        />
+        <View ref={notesField.ref} collapsable={false}>
+          <TextInput
+            value={notes}
+            onChangeText={setNotes}
+            onFocus={notesField.onFocus}
+            placeholder="What happened during this visit? Products discussed, orders taken, issues raised..."
+            placeholderTextColor={Colors.muted}
+            multiline
+            style={styles.area}
+          />
+        </View>
         <Text style={styles.label}>Proof of Visit</Text>
         <View style={styles.proofRow}>
           <Pressable style={styles.addPhoto} onPress={() => void pickPhoto()}>
@@ -79,18 +87,17 @@ export default function VisitNotesScreen() {
           </Pressable>
           {photo ? <Image source={{ uri: photo }} style={styles.preview} /> : <View style={styles.placeholder} />}
         </View>
-        <View style={{ flex: 1 }} />
         <PrimaryButton label="Save & Continue" loading={saving} onPress={() => void persist(true)} />
         <LinkButton label="Skip for now" onPress={() => void persist(true)} />
         <Text style={styles.foot}>Notes and photos are visible to your manager.</Text>
-      </View>
+      </KeyboardSafeScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { flex: 1, padding: 16, gap: 10, paddingBottom: 24 },
+  body: { padding: 16, gap: 10, paddingBottom: 32 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   chipText: { color: Colors.muted, fontSize: 13, flex: 1 },
   label: { fontWeight: '800', color: Colors.heading, marginTop: 6 },

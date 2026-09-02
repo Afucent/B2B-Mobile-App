@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { OutlineButton } from '@/components/ui/OutlineButton';
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
@@ -158,7 +159,7 @@ export default function AdminRolesScreen() {
     <RequireModuleAccess modules={['rbac', 'role_library', 'permission_matrix']}>
       <View style={styles.flex}>
         <ScreenHeader title="Role library" onBack={() => router.back()} />
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <KeyboardSafeScrollView contentContainerStyle={styles.body}>
           {canManageRoles ? (
             <OutlineButton
               label={showCreate ? 'Cancel create' : '+ Create custom role'}
@@ -252,7 +253,7 @@ export default function AdminRolesScreen() {
               ) : null}
             </View>
           ) : null}
-        </ScrollView>
+        </KeyboardSafeScrollView>
       </View>
     </RequireModuleAccess>
   );

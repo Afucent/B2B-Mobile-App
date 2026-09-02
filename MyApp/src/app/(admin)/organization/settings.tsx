@@ -15,7 +15,7 @@ export default function OrgSettingsScreen() {
         <View style={styles.card}>
           <Text style={styles.title}>Field operations</Text>
           <Text style={styles.copy}>
-            Shift windows, late grace, auto clock-out, and geofence radius are managed under Field ops
+            Shift windows, late grace, auto clock-out, and GPS tracking are managed under Field ops
             settings.
           </Text>
           <OutlineButton

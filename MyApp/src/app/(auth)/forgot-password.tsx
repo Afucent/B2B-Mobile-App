@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
 import { Colors } from '@/constants/theme';
@@ -42,9 +43,9 @@ export default function ForgotPasswordScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={styles.flex}>
       <ScreenHeader title="Reset password" onBack={() => router.back()} />
-      <View style={styles.body}>
+      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
         <Text style={styles.copy}>
           Enter the email or mobile linked to your account.{'\n'}We’ll send a verification code.
         </Text>
@@ -64,8 +65,8 @@ export default function ForgotPasswordScreen() {
           error={error}
         />
         <PrimaryButton label="Send code" onPress={() => void onSend()} loading={loading} />
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardSafeScrollView>
+    </View>
   );
 }
 

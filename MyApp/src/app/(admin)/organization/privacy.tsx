@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
@@ -51,7 +52,7 @@ export default function OrgPrivacyScreen() {
     <RequireModuleAccess module="organization">
       <View style={styles.flex}>
       <ScreenHeader title="Organisation privacy" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.body}>
+      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
         <TextField
           label="Privacy policy"
           value={privacyPolicy}
@@ -66,7 +67,7 @@ export default function OrgPrivacyScreen() {
         />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {editable ? <PrimaryButton label="Save" onPress={() => void save()} loading={busy} /> : null}
-      </ScrollView>
+      </KeyboardSafeScrollView>
     </View>
     </RequireModuleAccess>
   );

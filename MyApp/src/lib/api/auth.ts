@@ -5,6 +5,7 @@ export interface TokenResponse {
   access_token: string;
   token_type: string;
   expires_in: number;
+  must_change_password?: boolean;
 }
 
 export interface OrganizationBrief {
@@ -41,6 +42,7 @@ export interface MeResponse {
   roles?: RoleBrief[];
   permissions?: PermissionBrief[];
   mobile_eligible?: boolean;
+  must_change_password?: boolean;
 }
 
 export function orgLogin(companyCode: string, identifier: string, password: string) {
@@ -58,6 +60,41 @@ export function orgLogin(companyCode: string, identifier: string, password: stri
     method: 'POST',
     auth: false,
     body,
+  });
+}
+
+export function sendLoginOtp(companyCode: string, personalEmail: string) {
+  return apiRequest<{ message: string }>('/auth/login-otp/send', {
+    method: 'POST',
+    auth: false,
+    body: {
+      company_code: companyCode.trim(),
+      personal_email: personalEmail.trim(),
+      surface: 'mobile',
+    },
+  });
+}
+
+export function verifyLoginOtp(companyCode: string, personalEmail: string, otp: string) {
+  return apiRequest<TokenResponse>('/auth/login-otp/verify', {
+    method: 'POST',
+    auth: false,
+    body: {
+      company_code: companyCode.trim(),
+      personal_email: personalEmail.trim(),
+      otp: otp.trim(),
+      surface: 'mobile',
+    },
+  });
+}
+
+export function setRequiredPassword(newPassword: string, confirmPassword: string) {
+  return apiRequest<{ message: string }>('/auth/set-required-password', {
+    method: 'POST',
+    body: {
+      new_password: newPassword,
+      confirm_password: confirmPassword,
+    },
   });
 }
 

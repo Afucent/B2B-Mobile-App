@@ -2,9 +2,11 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import FieldOpsSettingsSummary from '@/components/FieldOpsSettingsSummary';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
+import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
 import { clockOut, getTodayStatus, type AttendanceRecord } from '@/lib/api/attendance';
 import { durationLabel, formatClock } from '@/lib/format';
 import { requestLocation } from '@/lib/location';
@@ -14,6 +16,7 @@ export default function ClockOutScreen() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(new Date());
+  const { settings, loading: settingsLoading } = useFieldOpsSettings();
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -83,6 +86,13 @@ export default function ClockOutScreen() {
         <Row label="Started:" value={formatClock(record?.clock_in_time)} />
         <Row label="Current Time:" value={formatClock(now.toISOString())} />
         <Row label="Duration so far:" value={durationLabel(record?.clock_in_time, now)} accent />
+
+        <FieldOpsSettingsSummary
+          settings={settings}
+          loading={settingsLoading}
+          title="Shift rules for clock-out"
+          compact
+        />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton label="Clock Out" onPress={() => void onClockOut()} loading={loading} />

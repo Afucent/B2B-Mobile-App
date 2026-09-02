@@ -39,10 +39,10 @@ type Props = {
 };
 
 export default function DashboardStats({ refreshKey = 0 }: Props) {
-  const { canView } = usePermissions();
+  const { canView, isOrgAdmin, showMyAttendanceLeave } = usePermissions();
   const canUsers = canView('users');
   const canLive = canView('live_location');
-  const canAttendance = canView('attendance');
+  const canAttendance = canView('attendance') || showMyAttendanceLeave;
 
   const [totalUsers, setTotalUsers] = useState<number | null>(null);
   const [activeUsers, setActiveUsers] = useState<number | null>(null);
@@ -148,16 +148,25 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
 
   const center = markers[0] ?? { latitude: 28.6139, longitude: 77.209 };
 
+  const isOrgAttendance = attendance?.scope === 'org' || canUsers || isOrgAdmin;
+  const myStatus = attendance?.present
+    ? 'Present'
+    : attendance?.on_leave
+      ? 'On leave'
+      : 'Absent';
+
   const hasAny = canUsers || canAttendance || canLive;
   if (!hasAny) return null;
 
   return (
     <View style={styles.wrap}>
-      <Text style={styles.heading}>Organisation dashboard</Text>
+      <Text style={styles.heading}>
+        {isOrgAdmin || canUsers ? 'Organisation dashboard' : 'My dashboard'}
+      </Text>
       {loading ? <Text style={styles.meta}>Loading dashboard…</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {(canUsers || canAttendance) && (
+      {(canUsers || (canAttendance && isOrgAttendance)) && (
         <View style={styles.grid}>
           {canUsers ? (
             <>
@@ -173,7 +182,7 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
               />
             </>
           ) : null}
-          {canAttendance ? (
+          {canAttendance && isOrgAttendance ? (
             <>
               <StatCard
                 label="Present today"
@@ -193,8 +202,12 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
       {canAttendance ? (
         <View style={styles.card}>
           <View>
-            <Text style={styles.cardTitle}>Daily attendance</Text>
-            <Text style={styles.cardSub}>Present · leave · absent</Text>
+            <Text style={styles.cardTitle}>
+              {isOrgAttendance ? 'Daily attendance' : 'My attendance'}
+            </Text>
+            <Text style={styles.cardSub}>
+              {isOrgAttendance ? 'Present · leave · absent' : 'Your status for the selected day'}
+            </Text>
           </View>
           <View style={styles.rangeRow}>
             {(['today', 'yesterday', 'custom'] as AttendanceRange[]).map((key) => (
@@ -231,11 +244,17 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
             />
           ) : null}
           {attendance ? (
-            <AttendancePie
-              present={attendance.present}
-              onLeave={attendance.on_leave}
-              absent={attendance.absent}
-            />
+            isOrgAttendance ? (
+              <AttendancePie
+                present={attendance.present}
+                onLeave={attendance.on_leave}
+                absent={attendance.absent}
+              />
+            ) : (
+              <Pressable onPress={() => router.push('/(app)/calendar')}>
+                <MyAttendanceStatus status={myStatus} />
+              </Pressable>
+            )
           ) : (
             <Text style={styles.meta}>No attendance data.</Text>
           )}
@@ -301,6 +320,19 @@ function StatCard({
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value ?? '—'}</Text>
     </Pressable>
+  );
+}
+
+function MyAttendanceStatus({ status }: { status: string }) {
+  const color =
+    status === 'Present' ? '#16a34a' : status === 'On leave' ? '#eab308' : '#ef4444';
+  return (
+    <View style={styles.myStatusWrap}>
+      <View style={[styles.myStatusBadge, { backgroundColor: color }]}>
+        <Text style={styles.myStatusText}>{status}</Text>
+      </View>
+      <Text style={styles.meta}>Tap to open your attendance calendar</Text>
+    </View>
   );
 }
 
@@ -461,6 +493,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.borderLight,
   },
   pieTotal: { fontWeight: '700', color: Colors.heading, fontSize: 13 },
+  myStatusWrap: { gap: 8, marginTop: 4, alignItems: 'flex-start' },
+  myStatusBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  myStatusText: { color: '#fff', fontWeight: '800', fontSize: 15 },
   legendCol: { gap: 6 },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dot: { width: 10, height: 10, borderRadius: 5 },

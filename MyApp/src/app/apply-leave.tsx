@@ -1,9 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { DateField } from '@/components/ui/DateField';
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { OutlineButton } from '@/components/ui/OutlineButton';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
@@ -78,7 +79,7 @@ export default function ApplyLeaveScreen() {
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Apply Leave" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
         <Text style={styles.label}>Leave Type</Text>
         <Pressable style={styles.select} onPress={() => setOpen((v) => !v)}>
           <Text style={styles.selectText}>{selected?.name || 'Select leave type'}</Text>
@@ -130,7 +131,7 @@ export default function ApplyLeaveScreen() {
 
         <PrimaryButton label="Apply Leave" loading={loading} onPress={() => void onSubmit()} />
         <OutlineButton label="Cancel" onPress={() => router.back()} />
-      </ScrollView>
+      </KeyboardSafeScrollView>
     </View>
   );
 }

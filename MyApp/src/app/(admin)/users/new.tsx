@@ -1,10 +1,11 @@
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import AssignDealersPicker from '@/components/AssignDealersPicker';
 import { OutlineButton } from '@/components/ui/OutlineButton';
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
@@ -163,7 +164,7 @@ export default function AdminCreateUserScreen() {
     <RequireModuleAccess module="users" action="create">
       <View style={styles.flex}>
         <ScreenHeader title="New user" onBack={() => router.back()} />
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <KeyboardSafeScrollView contentContainerStyle={styles.body}>
           <Text style={styles.step}>Step {step} of 2</Text>
 
           {step === 1 ? (
@@ -348,7 +349,7 @@ export default function AdminCreateUserScreen() {
               <PrimaryButton label="Create user" onPress={() => void submit()} loading={busy} />
             </>
           )}
-        </ScrollView>
+        </KeyboardSafeScrollView>
       </View>
     </RequireModuleAccess>
   );

@@ -1,9 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
@@ -97,7 +98,7 @@ export default function AdminDealerFormScreen() {
     <RequireModuleAccess module="dealers" action={isEdit ? 'read' : 'create'} allowCreate>
       <View style={styles.flex}>
       <ScreenHeader title={isEdit ? 'Edit dealer' : 'New dealer'} onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.body}>
+      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
         <TextField label="Name" value={name} onChangeText={setName} autoCapitalize="words" />
         <TextField label="Code" value={code} onChangeText={setCode} autoCapitalize="characters" />
         <TextField label="Address" value={address} onChangeText={setAddress} autoCapitalize="sentences" />
@@ -128,7 +129,7 @@ export default function AdminDealerFormScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton label="Save" onPress={() => void submit()} loading={busy} />
-      </ScrollView>
+      </KeyboardSafeScrollView>
     </View>
     </RequireModuleAccess>
   );

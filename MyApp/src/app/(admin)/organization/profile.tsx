@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
@@ -60,7 +61,7 @@ export default function OrgProfileScreen() {
     <RequireModuleAccess module="organization">
       <View style={styles.flex}>
       <ScreenHeader title="Organisation profile" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.body}>
+      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
         <TextField label="Name" value={form.name ?? ''} onChangeText={(v) => patch({ name: v })} autoCapitalize="words" />
         <View>
           <Text style={styles.codeLabel}>Company code</Text>
@@ -76,7 +77,7 @@ export default function OrgProfileScreen() {
         <TextField label="Description" value={form.company_description ?? ''} onChangeText={(v) => patch({ company_description: v })} autoCapitalize="sentences" />
         {error ? <Text style={styles.error}>{error}</Text> : null}
         {editable ? <PrimaryButton label="Save" onPress={() => void save()} loading={busy} /> : null}
-      </ScrollView>
+      </KeyboardSafeScrollView>
     </View>
     </RequireModuleAccess>
   );

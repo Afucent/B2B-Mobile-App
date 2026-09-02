@@ -8,21 +8,21 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
+import { useTracking } from '@/context/TrackingContext';
 import {
   endLocation,
   getEmployeeLiveDetail,
   getTodayStatus,
-  pingLocation,
   startLocation,
   type EmployeeLiveDetail,
   type TodayStatus,
 } from '@/lib/api/attendance';
-import { getFieldOperationsSettings } from '@/lib/api/org';
 import { durationLabel, formatClock, formatKm } from '@/lib/format';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
 
 export default function StartTrackingScreen() {
   const { user } = useAuth();
+  const { pingMinutes, refreshStatus } = useTracking();
   const [today, setToday] = useState<TodayStatus | null>(null);
   const [live, setLive] = useState<EmployeeLiveDetail | null>(null);
   const [loc, setLoc] = useState<DeviceLocation | null>(null);
@@ -30,7 +30,6 @@ export default function StartTrackingScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(new Date());
-  const [pingMinutes, setPingMinutes] = useState(20);
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -44,7 +43,8 @@ export default function StartTrackingScreen() {
     const liveDetail = await getEmployeeLiveDetail(user.id).catch(() => null);
     setLive(liveDetail);
     setLoading(false);
-  }, [user]);
+    await refreshStatus();
+  }, [refreshStatus, user]);
 
   useFocusEffect(
     useCallback(() => {
@@ -55,15 +55,6 @@ export default function StartTrackingScreen() {
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30000);
     return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    void getFieldOperationsSettings()
-      .then((settings) => {
-        const orgPing = settings.gps_ping_interval_minutes ?? 20;
-        setPingMinutes(Math.min(Math.max(orgPing, 1), 60));
-      })
-      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -93,31 +84,13 @@ export default function StartTrackingScreen() {
 
   useEffect(() => {
     if (!today?.tracking_active) return;
-    let cancelled = false;
-    async function ping() {
-      try {
-        const next = await requestLocation();
-        if (cancelled) return;
-        setLoc(next);
-        await pingLocation(next.latitude, next.longitude, next.accuracy ?? undefined);
-        await refresh();
-      } catch (err) {
-        // 429 = ping interval not elapsed yet; keep showing last known location.
-        const status =
-          err && typeof err === 'object' && 'status' in err
-            ? Number((err as { status: number }).status)
-            : 0;
-        if (status === 429) return;
-        /* ignore transient GPS/API errors */
-      }
-    }
-    void ping();
-    const timer = setInterval(() => void ping(), pingMinutes * 60 * 1000);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [pingMinutes, refresh, today?.tracking_active]);
+    const timer = setInterval(() => {
+      void requestLocation()
+        .then(setLoc)
+        .catch(() => undefined);
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [today?.tracking_active]);
 
   async function onStartTracking() {
     setBusy(true);
@@ -141,6 +114,7 @@ export default function StartTrackingScreen() {
       const next = loc ?? (await requestLocation());
       setLoc(next);
       await endLocation(next.latitude, next.longitude);
+      await refreshStatus();
       router.replace('/(app)/clock');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to end tracking.');
@@ -231,12 +205,14 @@ export default function StartTrackingScreen() {
           {trackingActive && live?.last_ping_label ? (
             <Text style={styles.meta}>Last ping · {live.last_ping_label}</Text>
           ) : null}
-          <Text style={styles.meta}>Location logs every {pingMinutes} min while tracking</Text>
+          <Text style={styles.meta}>
+            Location logs every {pingMinutes} min while tracking (app open)
+          </Text>
         </View>
 
         <Text style={styles.note}>
-          Live location is fetched only after you start tracking. End tracking stops location updates
-          without clocking out.
+          Tracking continues in the background while you use the app. End tracking stops location
+          updates without clocking out.
         </Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}

@@ -119,7 +119,7 @@ const FIELD_LINKS: TabNavLink[] = [
   },
   {
     title: 'Field ops settings',
-    subtitle: 'Shift windows & geofence',
+    subtitle: 'Shift windows & GPS tracking',
     href: '/(admin)/field-ops-settings',
     module: 'organization',
   },

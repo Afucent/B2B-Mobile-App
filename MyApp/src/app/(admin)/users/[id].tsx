@@ -1,10 +1,11 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import AssignDealersPicker from '@/components/AssignDealersPicker';
 import { OutlineButton } from '@/components/ui/OutlineButton';
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
@@ -256,7 +257,7 @@ export default function AdminUserDetailScreen() {
     <RequireModuleAccess module="users" allowCreate>
       <View style={styles.flex}>
         <ScreenHeader title="User" onBack={() => router.back()} />
-        <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <KeyboardSafeScrollView contentContainerStyle={styles.body}>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {message ? <Text style={styles.ok}>{message}</Text> : null}
           {!user && !error ? <Text style={styles.meta}>Loading…</Text> : null}
@@ -510,7 +511,7 @@ export default function AdminUserDetailScreen() {
               ) : null}
             </>
           ) : null}
-        </ScrollView>
+        </KeyboardSafeScrollView>
       </View>
     </RequireModuleAccess>
   );

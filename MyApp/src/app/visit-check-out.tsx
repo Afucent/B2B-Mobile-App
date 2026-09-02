@@ -3,10 +3,11 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import LocationMap from '@/components/LocationMap';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { uploadMedia } from '@/lib/api/uploads';
@@ -100,7 +101,7 @@ export default function VisitCheckOutScreen() {
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Check-out" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.body}>
+      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
         <Text style={styles.dealer}>{routeParam(params.dealerName) || 'Dealer'}</Text>
         {reachedAt ? (
           <Text style={styles.meta}>Checked in · {formatClock(reachedAt)}</Text>
@@ -173,7 +174,7 @@ export default function VisitCheckOutScreen() {
           disabled={locLoading}
           onPress={() => void submit()}
         />
-      </ScrollView>
+      </KeyboardSafeScrollView>
     </View>
   );
 }

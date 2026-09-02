@@ -1,11 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import DashboardStats from '@/components/DashboardStats';
+import { FirstLoginPasswordModal } from '@/components/auth/FirstLoginPasswordModal';
+import { useToast } from '@/components/ui/Toast';
 import { APP_VERSION, Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -15,10 +17,12 @@ import { isFieldTrackingEnabled } from '@/lib/permissions';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { user } = useAuth();
+  const { user, refresh } = useAuth();
+  const { showToast } = useToast();
   const { isOrgAdmin, showMyAttendanceLeave, hasAnyAdminRead, has, canView } = usePermissions();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [passwordModalDismissed, setPasswordModalDismissed] = useState(false);
   const name = user?.name ?? 'there';
 
   const showDashboard = canViewDashboard({
@@ -29,6 +33,19 @@ export default function HomeScreen() {
     canView,
     fieldTrackingEnabled: isFieldTrackingEnabled(user?.organization?.enabled_modules),
   });
+
+  const mustChangePassword = Boolean(user?.must_change_password);
+
+  useEffect(() => {
+    if (!user?.must_change_password) {
+      setPasswordModalDismissed(false);
+    }
+  }, [user?.must_change_password]);
+
+  async function onPasswordChanged() {
+    await refresh();
+    showToast('Password changed successfully');
+  }
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -82,6 +99,11 @@ export default function HomeScreen() {
           </View>
         )}
       </ScrollView>
+      <FirstLoginPasswordModal
+        visible={mustChangePassword && !passwordModalDismissed}
+        onComplete={() => void onPasswordChanged()}
+        onDismiss={() => setPasswordModalDismissed(true)}
+      />
     </View>
   );
 }

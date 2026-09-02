@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { getMe, orgLogin, type MeResponse } from '@/lib/api/auth';
+import { getMe, orgLogin, sendLoginOtp, verifyLoginOtp, type MeResponse } from '@/lib/api/auth';
 import { ApiRequestError } from '@/lib/api/client';
 import { clearToken, getCompanyCode, getToken, setCompanyCode, setToken } from '@/lib/storage';
 
@@ -20,6 +20,8 @@ interface AuthContextValue {
   user: MeResponse | null;
   companyCode: string;
   login: (companyCode: string, identifier: string, password: string) => Promise<void>;
+  loginWithOtp: (companyCode: string, email: string, otp: string) => Promise<void>;
+  sendOtp: (companyCode: string, email: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
   setRememberedCompany: (code: string) => Promise<void>;
@@ -75,6 +77,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const loginWithOtp = useCallback(async (code: string, email: string, otp: string) => {
+    try {
+      const tokens = await verifyLoginOtp(code, email, otp);
+      await setToken(tokens.access_token);
+      await setCompanyCode(code);
+      setCompany(code);
+      const me = await getMe();
+      assertMobileAccess(me);
+      setUser(me);
+      setStatus('signedIn');
+    } catch (err) {
+      await clearToken();
+      setUser(null);
+      setStatus('signedOut');
+      throw err;
+    }
+  }, []);
+
+  const sendOtp = useCallback(async (code: string, email: string) => {
+    await sendLoginOtp(code, email);
+    await setCompanyCode(code);
+    setCompany(code);
+  }, []);
+
   const logout = useCallback(async () => {
     await clearToken();
     setUser(null);
@@ -103,11 +129,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       companyCode,
       login,
+      loginWithOtp,
+      sendOtp,
       logout,
       refresh,
       setRememberedCompany,
     }),
-    [status, user, companyCode, login, logout, refresh, setRememberedCompany],
+    [status, user, companyCode, login, loginWithOtp, sendOtp, logout, refresh, setRememberedCompany],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

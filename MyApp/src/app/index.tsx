@@ -15,8 +15,8 @@ import Animated, {
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 
-/** Theme brand green — never use accent/stamp orange on splash. */
-const SPLASH_BG = Colors.brand;
+/** Brand green only — no accent/stamp orange on splash. */
+const SPLASH_BG = Colors.splash;
 
 function PulseCircle({ delay, size }: { delay: number; size: number }) {
   const scale = useSharedValue(0.35);

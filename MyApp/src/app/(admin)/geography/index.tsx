@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -102,7 +102,9 @@ export default function AdminGeographyScreen() {
     <RequireModuleAccess module="geography">
       <View style={styles.flex}>
       <ScreenHeader title="Geography" onBack={() => router.back()} />
-      <View style={styles.body}>
+      <KeyboardAvoidingView
+        style={styles.body}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.chips}>
           {tabs.map((t) => (
             <Pressable
@@ -151,7 +153,7 @@ export default function AdminGeographyScreen() {
             </View>
           )}
         />
-      </View>
+      </KeyboardAvoidingView>
     </View>
     </RequireModuleAccess>
   );

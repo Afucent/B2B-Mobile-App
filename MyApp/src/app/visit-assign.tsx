@@ -15,6 +15,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { OutlineButton } from '@/components/ui/OutlineButton';
+import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -248,7 +249,7 @@ function AssignVisitModal({
         <View style={styles.modalCard}>
           <Text style={styles.modalTitle}>Add visit</Text>
           <Text style={styles.sub}>Pick a range, then set dealers for each working day.</Text>
-          <ScrollView contentContainerStyle={{ gap: Spacing.sm, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+          <KeyboardSafeScrollView contentContainerStyle={{ gap: Spacing.sm, paddingBottom: 24 }}>
             <Text style={styles.label}>Employee *</Text>
             <Pressable style={styles.select} onPress={() => setShowEmployeePicker(true)}>
               <Text style={styles.selectText}>{employee?.name ?? 'Select employee'}</Text>
@@ -328,7 +329,7 @@ function AssignVisitModal({
             {error ? <Text style={styles.error}>{error}</Text> : null}
             <PrimaryButton label="Assign visit" loading={loading} onPress={() => void submit()} />
             <OutlineButton label="Cancel" onPress={onClose} />
-          </ScrollView>
+          </KeyboardSafeScrollView>
         </View>
       </View>
 
