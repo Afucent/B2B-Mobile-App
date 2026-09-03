@@ -2,6 +2,7 @@ import { Redirect } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -15,7 +16,7 @@ import Animated, {
 import { Colors } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 
-/** Brand green only — no accent/stamp orange on splash. */
+/** Brand green only — matches native splash + verifying session gate. */
 const SPLASH_BG = Colors.splash;
 
 function PulseCircle({ delay, size }: { delay: number; size: number }) {
@@ -77,6 +78,7 @@ export default function SplashGate() {
   if (!sessionReady || !minTimeDone) {
     return (
       <View style={styles.splash}>
+        <StatusBar style="light" />
         <View style={styles.rippleArea}>
           <PulseCircle delay={0} size={72} />
           <PulseCircle delay={320} size={72} />

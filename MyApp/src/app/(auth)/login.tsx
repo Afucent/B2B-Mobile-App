@@ -63,21 +63,32 @@ export default function LoginScreen() {
       router.replace('/(app)');
     } catch (err) {
       const statusCode = err instanceof ApiRequestError ? err.status : 0;
-      const detail =
+      const message = err instanceof Error ? err.message : 'Unable to log in.';
+      const detailRaw =
         err instanceof ApiRequestError
-          ? JSON.stringify(err.detail ?? '')
+          ? typeof err.detail === 'string'
+            ? err.detail
+            : JSON.stringify(err.detail ?? '')
           : String(err ?? '');
+      const detail = detailRaw.toLowerCase();
       if (statusCode === 422 || detail.includes('company_code')) {
         setErrors({ company: 'Company code not found – check with your admin' });
       } else if (statusCode === 401) {
-        setErrors({ password: 'Incorrect password' });
+        // Backend returns the same 401 for wrong password, unknown user, or bad company code.
+        const looksLikePassword =
+          detail.includes('password') || detail.includes('credential');
+        setErrors({
+          form: looksLikePassword
+            ? 'Invalid email/mobile or password. Check company code and try again.'
+            : message || 'Invalid email/mobile or password. Check company code and try again.',
+        });
       } else if (statusCode === 403) {
         setErrors({
-          form: err instanceof Error ? err.message : 'You do not have mobile app access.',
+          form: message || 'You do not have mobile app access.',
         });
       } else {
         setErrors({
-          form: err instanceof Error ? err.message : 'Unable to log in.',
+          form: message || 'Unable to log in.',
         });
       }
     } finally {
