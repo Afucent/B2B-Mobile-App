@@ -1,11 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import DashboardStats from '@/components/DashboardStats';
+import EmployeeDashboard from '@/components/EmployeeDashboard';
 import { FirstLoginPasswordModal } from '@/components/auth/FirstLoginPasswordModal';
 import { useToast } from '@/components/ui/Toast';
 import { APP_VERSION, Colors, Radius, Spacing } from '@/constants/theme';
@@ -14,13 +15,19 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { canViewDashboard } from '@/lib/tabNavigation';
 import { firstName, greetingForNow, initials } from '@/lib/format';
 import { isFieldTrackingEnabled } from '@/lib/permissions';
+import { FieldVisit } from '@/lib/api/visits';
+
+function isCompleted(visit: FieldVisit) {
+  return visit.status.toLowerCase() === 'completed';
+}
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, refresh } = useAuth();
   const { showToast } = useToast();
-  const { isOrgAdmin, showMyAttendanceLeave, hasAnyAdminRead, has, canView } = usePermissions();
+  const { isOrgAdmin,isEmployee, showMyAttendanceLeave, hasAnyAdminRead, has, canView } = usePermissions();
   const [refreshing, setRefreshing] = useState(false);
+  const [visits, setVisits] = useState<FieldVisit[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [passwordModalDismissed, setPasswordModalDismissed] = useState(false);
   const name = user?.name ?? 'there';
@@ -35,6 +42,21 @@ export default function HomeScreen() {
   });
 
   const mustChangePassword = Boolean(user?.must_change_password);
+  const dateLabel = new Intl.DateTimeFormat('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'Asia/Kolkata',
+  }).format(new Date());
+
+  const canViewVisits = canView('field_visits');
+  const pendingVisits = useMemo(
+    () => visits.filter((visit) => !isCompleted(visit)).sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)),
+    [visits],
+  );
+
+  const nextVisit = pendingVisits[0];
+
 
   useEffect(() => {
     if (!user?.must_change_password) {
@@ -63,14 +85,30 @@ export default function HomeScreen() {
         <View style={styles.topRow}>
           <View>
             <View style={styles.brandRow}>
-              <Text style={styles.logo}>AFBEX</Text>
+              {/* <Text style={styles.logo}>AFBEX</Text> */}
+              <Image
+                source={require('@/assets/images/logo_png.png')}
+                style={{
+                  width: 150,
+                  height: 40,
+                  resizeMode: 'contain',
+                }}
+              />
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>v{APP_VERSION}</Text>
               </View>
             </View>
-            <Text style={styles.hello}>
+            {/* <Text style={styles.hello}>
               {greetingForNow()}, {firstName(name)}
-            </Text>
+            </Text> */}
+            <View style={styles.greeting}>
+              <Text style={styles.date}>{dateLabel.toUpperCase()}</Text>
+              <Text style={styles.greetingTitle}>{greetingForNow()}, {firstName(name)}</Text>
+              <Text style={styles.greetingCopy}>
+                {canViewVisits && nextVisit ? 'Your next visit is ready to go.' : 'Your workday is ready to go.'}
+              </Text>
+            </View>
+
           </View>
           <View style={styles.topActions}>
             <Pressable style={styles.iconBtn} onPress={() => router.push('/notifications')}>
@@ -87,8 +125,9 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         </View>
-
-        {showDashboard ? (
+        {isEmployee ? (
+          <EmployeeDashboard refreshKey={refreshKey} />
+        ) : showDashboard ? (
           <DashboardStats refreshKey={refreshKey} />
         ) : (
           <View style={styles.card}>
@@ -148,4 +187,8 @@ const styles = StyleSheet.create({
   },
   welcomeTitle: { fontSize: 18, fontWeight: '800', color: Colors.heading },
   welcomeCopy: { color: Colors.muted, lineHeight: 20 },
+  greeting: { gap: 6 },
+  date: { color: '#008C87', fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
+  greetingTitle: { color: Colors.brand, fontSize: 24, fontWeight: '800', letterSpacing: 0 },
+  greetingCopy: { color: '#829598', fontSize: 12 },
 });
