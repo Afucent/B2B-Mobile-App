@@ -15,7 +15,8 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "AFBEX uses your location to verify clock-in, clock-out, and field tracking."
+        "NSLocationWhenInUseUsageDescription": "AFBEX uses your location to verify clock-in, clock-out, and field tracking.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "AFBEX uses your location during an active shift, even when the app is in the background."
       },
       "splash": {
         "image": "./assets/images/splash-icon.png",
@@ -36,6 +37,10 @@
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECORD_AUDIO"
       ],
       "package": "com.anonymous.afbex",
@@ -63,7 +68,12 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "AFBEX uses your location to verify clock-in, clock-out, and field tracking."
+          "locationWhenInUsePermission": "AFBEX uses your location to verify clock-in, clock-out, and field tracking.",
+          "locationAlwaysAndWhenInUsePermission": "AFBEX uses your location during an active shift, even when the app is in the background.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true,
+          "killServiceOnDestroy": false
         }
       ],
       "expo-secure-store",

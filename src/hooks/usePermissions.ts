@@ -15,11 +15,17 @@ function isOrganizationAdmin(roles: { name: string }[] | undefined): boolean {
     (r) => r.name.trim().toLowerCase().replace(/\s+/g, '_') === 'organization_admin',
   );
 }
+function isEmployee(roles: { name: string }[] | undefined): boolean {
+  return (roles ?? []).some(
+    (r) => r.name.trim().toLowerCase().replace(/\s+/g, '_') === 'employee',
+  );
+}
 
 export function usePermissions() {
   const { user } = useAuth();
   const permissions = user?.permissions ?? [];
   const orgAdmin = isOrganizationAdmin(user?.roles);
+  const employee = isEmployee(user?.roles);
 
   return useMemo(() => {
     const has = (module: string, action: string, scope = 'tenant') =>
@@ -57,6 +63,7 @@ export function usePermissions() {
     return {
       permissions,
       isOrgAdmin: orgAdmin,
+      isEmployee: employee,
       has,
       canView,
       canCreate,

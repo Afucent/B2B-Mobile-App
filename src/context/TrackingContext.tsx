@@ -13,6 +13,10 @@ import { AppState } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
 import { getTodayStatus, pingLocation } from '@/lib/api/attendance';
+import {
+  startBackgroundLocation,
+  stopBackgroundLocation,
+} from '@/lib/backgroundLocation';
 import { requestLocation } from '@/lib/location';
 
 type TrackingContextValue = {
@@ -76,10 +80,16 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
   }, [refreshSettings, refreshStatus, status]);
 
   useEffect(() => {
-    if (status !== 'signedIn' || !trackingActive) return;
+    if (status === 'loading') return;
+    if (status !== 'signedIn' || !trackingActive) {
+      void stopBackgroundLocation().catch(() => undefined);
+      return;
+    }
 
     let cancelled = false;
     const pingMs = pingMinutes * 60_000;
+
+    void startBackgroundLocation(pingMinutes).catch(() => undefined);
 
     async function sendPing(force = false) {
       if (pingInFlight.current || cancelled) return;
