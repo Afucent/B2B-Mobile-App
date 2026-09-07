@@ -18,10 +18,6 @@ import {
   type TodayStatus,
 } from '@/lib/api/attendance';
 import { durationLabel, formatClock, formatKm } from '@/lib/format';
-import {
-  requestBackgroundLocationPermission,
-  startBackgroundLocation,
-} from '@/lib/backgroundLocation';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
 
 export default function StartTrackingScreen() {
@@ -100,19 +96,9 @@ export default function StartTrackingScreen() {
     setBusy(true);
     setError('');
     try {
-      const backgroundPermission = await requestBackgroundLocationPermission();
-      if (!backgroundPermission) {
-        setError('Background location permission is required while you are clocked in.');
-        return;
-      }
       const next = loc ?? (await requestLocation());
       setLoc(next);
       await startLocation(next.latitude, next.longitude);
-      const started = await startBackgroundLocation(pingMinutes);
-      if (!started) {
-        setError('Background location could not be started. Enable notifications and Allow all the time location access.');
-        return;
-      }
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to start tracking.');
@@ -220,7 +206,7 @@ export default function StartTrackingScreen() {
             <Text style={styles.meta}>Last ping · {live.last_ping_label}</Text>
           ) : null}
           <Text style={styles.meta}>
-            Location logs every {pingMinutes} min while tracking
+            Location logs every {pingMinutes} min while tracking (app open)
           </Text>
         </View>
 
