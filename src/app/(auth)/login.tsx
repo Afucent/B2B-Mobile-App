@@ -1,6 +1,6 @@
 import { Link, Redirect, router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -107,7 +107,15 @@ export default function LoginScreen() {
         automaticallyAdjustKeyboardInsets>
         <View>
           <View style={styles.brandRow}>
-            <Text style={styles.logo}>AFBEX</Text>
+            {/* <Text style={styles.logo}>AFBEX</Text> */}
+            <Image
+              source={require('@/assets/images/logo_png.png')}
+              style={{
+                width: 150,
+                height: 40,
+                resizeMode: 'contain',
+              }}
+            />
             <View style={styles.badge}>
               <Text style={styles.badgeText}>v{APP_VERSION}</Text>
             </View>

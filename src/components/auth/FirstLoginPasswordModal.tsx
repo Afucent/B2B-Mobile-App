@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import {KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View,
+} from 'react-native';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { TextField } from '@/components/ui/TextField';
@@ -58,8 +59,14 @@ export function FirstLoginPasswordModal({
       transparent
       animationType="fade"
       onRequestClose={() => onDismiss?.()}>
-      <View style={styles.backdrop}>
-        <View style={styles.card}>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView
+          contentContainerStyle={styles.backdrop}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+          <View style={styles.card}>
           <View style={styles.header}>
             <Text style={styles.title}>Set your password</Text>
             <Pressable
@@ -92,15 +99,19 @@ export function FirstLoginPasswordModal({
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
           <PrimaryButton label="Update password" onPress={() => void onSubmit()} loading={loading} />
-        </View>
-      </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  keyboardAvoidingView: {
     flex: 1,
+  },
+  backdrop: {
+    flexGrow: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     padding: Spacing.lg,

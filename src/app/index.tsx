@@ -1,7 +1,7 @@
 import { Redirect } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Animated, {
   Easing,
@@ -17,7 +17,7 @@ import { Colors } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 
 /** Brand green only — matches native splash + verifying session gate. */
-const SPLASH_BG = Colors.splash;
+const SPLASH_BG = Colors.background;
 
 function PulseCircle({ delay, size }: { delay: number; size: number }) {
   const scale = useSharedValue(0.35);
@@ -85,7 +85,15 @@ export default function SplashGate() {
           <PulseCircle delay={640} size={72} />
           <View style={styles.centerDot} />
         </View>
-        <Text style={styles.brand}>AFBEX</Text>
+        {/* <Text style={styles.brand}>AFBEX</Text> */}
+        <Image
+          source={require('@/assets/images/logo_png.png')}
+          style={{
+            width: 150,
+            height: 40,
+            resizeMode: 'contain',
+          }}
+        />
         <Text style={styles.status}>VERIFYING SESSION...</Text>
       </View>
     );
@@ -112,24 +120,24 @@ const styles = StyleSheet.create({
   circle: {
     position: 'absolute',
     borderWidth: 1.5,
-    borderColor: '#FFFFFF',
+    borderColor: '#1D2939',
     backgroundColor: 'transparent',
   },
   centerDot: {
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#1D2939',
   },
   brand: {
-    color: '#FFFFFF',
+    color: '#1D2939',
     fontSize: 36,
     fontWeight: '800',
     letterSpacing: 3,
   },
   status: {
     marginTop: 14,
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(29, 41, 57, 0.85)',
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 2,
