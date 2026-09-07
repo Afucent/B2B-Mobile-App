@@ -20,8 +20,8 @@ export default function ForgotPasswordScreen() {
 
   async function onSend() {
     setError('');
-    if (!/^\d{6}$/.test(companyCode.trim())) {
-      setError('Enter a valid 6-digit company code.');
+    if (!/^\d{4}$/.test(companyCode.trim())) {
+      setError('Enter a valid 4-digit company code.');
       return;
     }
     if (!isEmail(identifier)) {
@@ -52,8 +52,8 @@ export default function ForgotPasswordScreen() {
         <TextField
           label="Company code"
           value={companyCode}
-          onChangeText={setCompanyCode}
-          placeholder="e.g. 100001"
+          onChangeText={(v) => setCompanyCode(v.replace(/\D/g, '').slice(0, 4))}
+          placeholder="e.g. 1001"
           autoCapitalize="characters"
         />
         <TextField
