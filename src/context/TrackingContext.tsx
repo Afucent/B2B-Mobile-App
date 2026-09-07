@@ -74,10 +74,13 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
       if (next === 'active') {
         void refreshSettings();
         void refreshStatus();
+        if (trackingActive) {
+          void startBackgroundLocation(pingMinutes).catch(() => undefined);
+        }
       }
     });
     return () => sub.remove();
-  }, [refreshSettings, refreshStatus, status]);
+  }, [pingMinutes, refreshSettings, refreshStatus, status, trackingActive]);
 
   useEffect(() => {
     if (status === 'loading') return;

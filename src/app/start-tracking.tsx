@@ -220,7 +220,7 @@ export default function StartTrackingScreen() {
             <Text style={styles.meta}>Last ping · {live.last_ping_label}</Text>
           ) : null}
           <Text style={styles.meta}>
-            Location logs every {pingMinutes} min while tracking (app open)
+            Location logs every {pingMinutes} min while tracking
           </Text>
         </View>
 

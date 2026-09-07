@@ -17,13 +17,23 @@ TaskManager.defineTask<{ locations: Location.LocationObject[] }>(
     if (!data?.locations?.length || !(await getToken())) return;
 
     const location = data.locations[data.locations.length - 1];
-    await pingLocation(
-      location.coords.latitude,
-      location.coords.longitude,
-      location.coords.accuracy ?? undefined,
-    )
-      .then(() => console.log('[background-location] ping sent'))
-      .catch((pingError) => console.warn('[background-location] ping failed', pingError));
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await pingLocation(
+          location.coords.latitude,
+          location.coords.longitude,
+          location.coords.accuracy ?? undefined,
+        );
+        console.log('[background-location] ping sent');
+        return;
+      } catch (pingError) {
+        if (attempt === 2) {
+          console.warn('[background-location] ping failed', pingError);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2_000));
+      }
+    }
   },
 );
 
@@ -57,6 +67,8 @@ export async function startBackgroundLocation(intervalMinutes: number) {
     accuracy: Location.Accuracy.High,
     timeInterval: intervalMinutes * 60_000,
     distanceInterval: 0,
+    deferredUpdatesInterval: 0,
+    deferredUpdatesDistance: 0,
     pausesUpdatesAutomatically: false,
     showsBackgroundLocationIndicator: true,
     foregroundService: {
