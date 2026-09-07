@@ -62,6 +62,25 @@ export default function LoginScreen() {
       await login(code, identifier.trim(), password);
       router.replace('/(app)');
     } catch (err) {
+      // Server/network unreachable
+      const errorMessage =
+        err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+
+      const isNetworkError =
+        err instanceof TypeError ||
+        errorMessage.includes('network request failed') ||
+        errorMessage.includes('failed to fetch') ||
+        errorMessage.includes('network error') ||
+        errorMessage.includes('fetch failed') ||
+        errorMessage.includes('network request');
+
+      if (isNetworkError) {
+        setErrors({
+          form: 'No Internet Connection. Please check your network and try again.',
+        });
+        return;
+      }
+
       const statusCode = err instanceof ApiRequestError ? err.status : 0;
       const message = err instanceof Error ? err.message : 'Unable to log in.';
       const detailRaw =
