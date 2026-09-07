@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import FieldOpsSettingsSummary from '@/components/FieldOpsSettingsSummary';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -12,6 +13,7 @@ import { formatClock, formatLongDate } from '@/lib/format';
 import { requestLocation } from '@/lib/location';
 
 export default function ClockInScreen() {
+  const insets = useSafeAreaInsets();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(new Date());
@@ -70,7 +72,10 @@ export default function ClockInScreen() {
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Clock In" onBack={() => router.back()} />
-      <View style={styles.sheet}>
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={[styles.sheet, { paddingBottom: insets.bottom + 20 }]}
+        scrollIndicatorInsets={{ bottom: insets.bottom }}>
         <View style={styles.card}>
           <Text style={styles.badge}>ATTENDANCE</Text>
           <Text style={styles.title}>Mark attendance</Text>
@@ -92,14 +97,14 @@ export default function ClockInScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton label="Clock In" onPress={() => void onClockIn()} loading={loading} />
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.background },
-  sheet: { padding: 20, gap: 10, flex: 1 },
+  sheet: { padding: 20, gap: 10, flexGrow: 1 },
   card: {
     borderWidth: 1,
     borderColor: Colors.border,

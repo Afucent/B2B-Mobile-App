@@ -42,7 +42,7 @@ export default function ProfileScreen() {
   return (
     <ScrollView
       style={styles.flex}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, paddingBottom: 40 }]}>
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 40 }]}>
       <View style={styles.top}>
         <Text style={styles.screenTitle}>My Profile</Text>
         <Pressable onPress={() => router.push('/settings')} hitSlop={8}>

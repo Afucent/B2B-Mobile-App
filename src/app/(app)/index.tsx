@@ -80,7 +80,7 @@ export default function HomeScreen() {
     <View style={styles.flex}>
       <View style={{ height: insets.top, backgroundColor: Colors.background }} />
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}>
         <View style={styles.topRow}>
           <View>
@@ -149,7 +149,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
-  content: { padding: Spacing.md, paddingBottom: 32, gap: Spacing.md },
+  content: { padding: Spacing.md, gap: Spacing.md },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logo: { fontSize: 26, fontWeight: '800', color: Colors.brand },

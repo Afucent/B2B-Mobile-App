@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import RequireEmployeeTab from '@/components/RequireEmployeeTab';
@@ -40,6 +41,7 @@ export default function ClockScreen() {
 
 function ClockContent() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const { user } = useAuth();
   const { isOrgAdmin, showMyAttendanceLeave, hasAnyAdminRead, has, canView, canCreate } =
     usePermissions();
@@ -157,7 +159,8 @@ function ClockContent() {
   return (
     <ScrollView
       style={styles.flex}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}>
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: tabBarHeight + Spacing.md }]}
+      scrollIndicatorInsets={{ bottom: insets.bottom }}>
       <Text style={styles.screenTitle}>
         {isOrgAdmin ? 'Leave & Attendance' : 'Clock & My Leave'}
       </Text>
@@ -323,7 +326,7 @@ function ClockContent() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
-  content: { padding: Spacing.md, paddingBottom: 40, gap: Spacing.md },
+  content: { padding: Spacing.md, gap: Spacing.md },
   screenTitle: { fontSize: 24, fontWeight: '800', color: Colors.heading },
   tracking: {
     backgroundColor: Colors.trackingBg,

@@ -29,7 +29,7 @@ function RolesContent() {
   return (
     <ScrollView
       style={styles.flex}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, paddingBottom: 40 }]}>
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 40 }]}>
       <Text style={styles.title}>Users & roles</Text>
       <Text style={styles.subtitle}>Manage users, roles, permissions and dealer assignments</Text>
       <TabModuleLinks sections={sections} />

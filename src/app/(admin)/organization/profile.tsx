@@ -11,6 +11,7 @@ import { TextField } from '@/components/ui/TextField';
 import { Colors, Spacing } from '@/constants/theme';
 import { usePermissions } from '@/hooks/usePermissions';
 import { getOrgProfile, updateOrgProfile, type OrgProfile } from '@/lib/api/tenantOrg';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function OrgProfileScreen() {
   const { canEdit } = usePermissions();
@@ -56,10 +57,11 @@ export default function OrgProfileScreen() {
       setBusy(false);
     }
   }
+  const insets = useSafeAreaInsets();
 
   return (
     <RequireModuleAccess module="organization">
-      <View style={styles.flex}>
+      <View style={[styles.flex, { paddingBottom: insets.bottom }]}>
       <ScreenHeader title="Organisation profile" onBack={() => router.back()} />
       <KeyboardSafeScrollView contentContainerStyle={styles.body}>
         <TextField label="Name" value={form.name ?? ''} onChangeText={(v) => patch({ name: v })} autoCapitalize="words" />

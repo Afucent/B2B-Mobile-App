@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Stamp } from '@/components/ui/Stamp';
@@ -7,6 +8,7 @@ import { Colors, Radius } from '@/constants/theme';
 import { formatClock, formatDate, hoursToLabel } from '@/lib/format';
 
 export default function ShiftCompleteScreen() {
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
     inTime?: string;
     outTime?: string;
@@ -46,7 +48,7 @@ export default function ShiftCompleteScreen() {
         </Text>
         <Text style={styles.lock}>Digital signature lock reference: #{params.lock ?? 'A1B2C3'}</Text>
       </View>
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
         <PrimaryButton label="Back to Dashboard" onPress={() => router.replace('/(app)')} />
       </View>
     </View>

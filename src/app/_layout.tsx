@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider } from '@/context/AuthContext';
 import { FieldOpsSettingsProvider } from '@/context/FieldOpsSettingsContext';
@@ -13,12 +14,13 @@ SplashScreen.preventAutoHideAsync();
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
-        <ToastProvider>
-        <FieldOpsSettingsProvider>
-          <TrackingProvider>
-          <StatusBar style="dark" />
-          <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <ToastProvider>
+          <FieldOpsSettingsProvider>
+            <TrackingProvider>
+            <StatusBar style="dark" />
+            <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(app)" />
@@ -50,11 +52,12 @@ export default function RootLayout() {
             <Stack.Screen name="leave-balance" />
             <Stack.Screen name="leave-management" />
             <Stack.Screen name="visit-assign" />
-          </Stack>
-          </TrackingProvider>
-        </FieldOpsSettingsProvider>
-        </ToastProvider>
-      </AuthProvider>
+            </Stack>
+            </TrackingProvider>
+          </FieldOpsSettingsProvider>
+          </ToastProvider>
+        </AuthProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

@@ -33,7 +33,7 @@ function FieldContent() {
   return (
     <View style={styles.flex}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, paddingBottom: 120 }]}>
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 120 }]}>
         <View style={styles.header}>
           <Text style={styles.title}>Field & Visits</Text>
           <Text style={styles.date}>{formatDate(new Date())}</Text>

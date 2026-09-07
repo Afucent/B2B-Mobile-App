@@ -26,6 +26,7 @@ import {
 } from '@/lib/api/fieldOps';
 import { formatClock, hoursToLabel } from '@/lib/format';
 import { displayYmd, ymd } from '@/lib/leaveUi';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function AdminAttendanceScreen() {
   return (
@@ -124,11 +125,14 @@ function AttendanceContent() {
       employeeId: r.employee_id,
     }));
   }, [canViewAll, board, selfRows, user]);
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Attendance" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView
+        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 20 }]}
+        scrollIndicatorInsets={{ bottom: insets.bottom }}>
         <Text style={styles.subtitle}>
           {canViewAll
             ? 'Organisation attendance — clock in and clock out times.'

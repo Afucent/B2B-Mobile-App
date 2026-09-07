@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { OutlineButton } from '@/components/ui/OutlineButton';
@@ -69,6 +70,7 @@ export default function VisitAssignScreen() {
 }
 
 function VisitAssignContent() {
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<FieldVisit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -104,7 +106,7 @@ function VisitAssignContent() {
         <FlatList
           data={items}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ gap: Spacing.sm, paddingBottom: 40 }}
+          contentContainerStyle={{ gap: Spacing.sm, paddingBottom: insets.bottom + 40 }}
           ListEmptyComponent={!loading ? <Text style={styles.meta}>No pending visits.</Text> : null}
           renderItem={({ item }) => (
             <View style={styles.row}>
@@ -239,13 +241,14 @@ function AssignVisitModal({
       setLoading(false);
     }
   }
+  const insets = useSafeAreaInsets();
 
   const employee = employees.find((e) => e.id === employeeId);
   const dealers: VisitAssignOption[] = employee?.dealers ?? [];
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
+      <View style={[styles.modalBackdrop, { paddingBottom: insets.bottom }]}>
         <View style={styles.modalCard}>
           <Text style={styles.modalTitle}>Add visit</Text>
           <Text style={styles.sub}>Pick a range, then set dealers for each working day.</Text>
