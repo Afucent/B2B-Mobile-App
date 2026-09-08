@@ -36,8 +36,8 @@ export default function LoginScreen() {
     const code = companyCode.trim();
     const id = identifier.trim();
     const next: typeof errors = {};
-    if (!/^\d{4}$/.test(code)) {
-      next.company = 'Enter a valid 4-digit company code.';
+    if (!/^\d{6}$/.test(code)) {
+      next.company = 'Enter a valid 6-digit company code.';
     }
     if (!id) {
       next.identifier = 'Enter your email or mobile.';
@@ -148,8 +148,8 @@ export default function LoginScreen() {
           <TextField
             label="Company code"
             value={companyCode}
-            onChangeText={(v) => setCompanyCode(v.replace(/\D/g, '').slice(0, 4))}
-            placeholder="e.g. 1001"
+            onChangeText={(v) => setCompanyCode(v.replace(/\D/g, '').slice(0, 6))}
+            placeholder="e.g. 100001"
             keyboardType="numeric"
             error={errors.company}
           />
