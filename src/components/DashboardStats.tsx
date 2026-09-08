@@ -106,7 +106,12 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
     useCallback(() => {
       void loadBase();
       void loadAttendance();
-    }, [loadBase, loadAttendance]),
+      if (!canLive) return undefined;
+      const id = setInterval(() => {
+        void loadBase();
+      }, 60_000);
+      return () => clearInterval(id);
+    }, [loadBase, loadAttendance, canLive]),
   );
 
   useEffect(() => {

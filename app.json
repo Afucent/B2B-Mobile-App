@@ -15,7 +15,10 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "AFBEX uses your location to verify clock-in, clock-out, and field tracking."
+        "NSLocationWhenInUseUsageDescription": "AFBEX uses your location to verify clock-in, clock-out, and field tracking.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "AFBEX uses your location in the background during your shift to record live tracking pings.",
+        "NSLocationAlwaysUsageDescription": "AFBEX uses your location in the background during your shift to record live tracking pings.",
+        "UIBackgroundModes": ["location", "fetch"]
       },
       "splash": {
         "image": "./assets/images/logo_png.png",
@@ -36,6 +39,12 @@
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION",
+        "android.permission.WAKE_LOCK",
+        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+        "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECORD_AUDIO"
       ],
       "package": "com.anonymous.afbex",
@@ -63,9 +72,15 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "AFBEX uses your location to verify clock-in, clock-out, and field tracking."
+          "locationWhenInUsePermission": "AFBEX uses your location to verify clock-in, clock-out, and field tracking.",
+          "locationAlwaysAndWhenInUsePermission": "AFBEX uses your location in the background during your shift to record live tracking pings.",
+          "locationAlwaysPermission": "AFBEX uses your location in the background during your shift to record live tracking pings.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
+      "expo-task-manager",
       "expo-secure-store",
       "expo-font",
       [

@@ -18,6 +18,12 @@ import {
   type TodayStatus,
 } from '@/lib/api/attendance';
 import { durationLabel, formatClock, formatKm } from '@/lib/format';
+import {
+  backgroundStartErrorMessage,
+  persistPingIntervalMinutes,
+  startBackgroundLocationResult,
+  stopBackgroundLocation,
+} from '@/lib/backgroundLocation';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
 
 export default function StartTrackingScreen() {
@@ -98,8 +104,43 @@ export default function StartTrackingScreen() {
     try {
       const next = loc ?? (await requestLocation());
       setLoc(next);
-      await startLocation(next.latitude, next.longitude);
+      await persistPingIntervalMinutes(pingMinutes);
+      const gps = await startBackgroundLocationResult();
+      if (!gps.ok) {
+        if (gps.reason === 'background_denied' || gps.reason === 'foreground_denied') {
+          router.replace({
+            pathname: '/location-required',
+            params: {
+              reason: gps.reason === 'background_denied' ? 'background' : 'denied',
+              next: '/start-tracking',
+            },
+          });
+          return;
+        }
+        if (gps.reason === 'services_off') {
+          router.replace({
+            pathname: '/location-required',
+            params: { reason: 'off', next: '/start-tracking' },
+          });
+          return;
+        }
+        setError(backgroundStartErrorMessage(gps.reason));
+        return;
+      }
+      try {
+        await startLocation(next.latitude, next.longitude);
+      } catch (err) {
+        await stopBackgroundLocation().catch(() => undefined);
+        throw err;
+      }
       await refresh();
+      const stillRunning = await startBackgroundLocationResult();
+      if (!stillRunning.ok) {
+        await endLocation(next.latitude, next.longitude).catch(() => undefined);
+        await stopBackgroundLocation().catch(() => undefined);
+        await refreshStatus();
+        setError(backgroundStartErrorMessage(stillRunning.reason));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to start tracking.');
     } finally {
@@ -114,6 +155,7 @@ export default function StartTrackingScreen() {
       const next = loc ?? (await requestLocation());
       setLoc(next);
       await endLocation(next.latitude, next.longitude);
+      await stopBackgroundLocation().catch(() => undefined);
       await refreshStatus();
       router.replace('/(app)/clock');
     } catch (err) {
@@ -206,12 +248,14 @@ export default function StartTrackingScreen() {
             <Text style={styles.meta}>Last ping · {live.last_ping_label}</Text>
           ) : null}
           <Text style={styles.meta}>
-            Location logs every {pingMinutes} min while tracking (app open)
+            Location logs every {pingMinutes} min while tracking, including with the app closed
+            or the screen off.
           </Text>
         </View>
 
         <Text style={styles.note}>
-          Tracking continues in the background while you use the app. End tracking stops location
+          Tracking continues after you leave the app and turn the screen off. Allow location all
+          the time and keep the persistent location notification on. End tracking stops location
           updates without clocking out.
         </Text>
 

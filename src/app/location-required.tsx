@@ -11,7 +11,8 @@ import { openDeviceSettings } from '@/lib/location';
 
 export default function LocationRequiredScreen() {
   const { reason, next } = useLocalSearchParams<{ reason?: string; next?: string }>();
-  const denied = reason === 'denied';
+  const background = reason === 'background';
+  const denied = reason === 'denied' || background;
   const target = next || '/clock-in';
 
   const steps = denied
@@ -19,7 +20,7 @@ export default function LocationRequiredScreen() {
         'Open device Settings',
         'Find AFBEX under Apps',
         'Tap Permissions',
-        'Allow Location: Always or While Using',
+        'Allow Location: Allow all the time',
       ]
     : ['Open device Settings', 'Tap Location / Security', 'Turn on location services', 'Return to AFBEX'];
 
@@ -31,12 +32,18 @@ export default function LocationRequiredScreen() {
           <Ionicons name="warning" size={18} color={denied ? Colors.pendingText : Colors.pendingText} />
           <View style={{ flex: 1 }}>
             <Text style={styles.bannerTitle}>
-              {denied ? 'Location permission denied' : 'Location is turned off'}
+              {background
+                ? 'Allow location all the time'
+                : denied
+                  ? 'Location permission denied'
+                  : 'Location is turned off'}
             </Text>
             <Text style={styles.bannerCopy}>
-              {denied
-                ? 'AFBEX needs location access to verify your clock-in. Grant permission in settings.'
-                : 'Turn on location services on your device to clock in.'}
+              {background
+                ? 'Live tracking needs location all the time so pings continue with the app closed and the screen off.'
+                : denied
+                  ? 'AFBEX needs location access to verify your clock-in. Grant permission in settings.'
+                  : 'Turn on location services on your device to clock in.'}
             </Text>
           </View>
         </View>
@@ -63,9 +70,11 @@ export default function LocationRequiredScreen() {
           onPress={() => router.replace('/(app)')}
         />
         <Text style={styles.foot}>
-          {denied
-            ? 'Location is required per company policy (BR-02).'
-            : "You won't be clocked in until location is available."}
+          {background
+            ? 'Location all the time is required so live tracking continues with the screen off.'
+            : denied
+              ? 'Location is required per company policy (BR-02).'
+              : "You won't be clocked in until location is available."}
         </Text>
         <LinkButton label="Try again" onPress={() => void continueLocationAction(target)} />
       </View>

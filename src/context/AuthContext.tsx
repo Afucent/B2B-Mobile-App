@@ -43,15 +43,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('signedOut');
       return;
     }
+    await setToken(token).catch(() => undefined);
     try {
       const me = await getMe();
       assertMobileAccess(me);
       setUser(me);
       setStatus('signedIn');
-    } catch {
-      await clearToken();
-      setUser(null);
-      setStatus('signedOut');
+    } catch (err) {
+      if (err instanceof ApiRequestError && (err.status === 401 || err.status === 403)) {
+        await clearToken();
+        setUser(null);
+        setStatus('signedOut');
+        return;
+      }
+      // Keep the token on network/server errors so background pings still authenticate
+      // when the app is closed and the screen is off.
+      setStatus('signedIn');
     }
   }, []);
 
@@ -102,6 +109,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    const { stopBackgroundLocation } = await import('@/lib/backgroundLocation');
+    await stopBackgroundLocation().catch(() => undefined);
     await clearToken();
     setUser(null);
     setStatus('signedOut');

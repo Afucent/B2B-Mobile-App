@@ -13,7 +13,15 @@ import { AppState } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
 import { getTodayStatus, pingLocation } from '@/lib/api/attendance';
-import { requestLocation } from '@/lib/location';
+import {
+  isPersistedTrackingActive,
+  markLocationPingSent,
+  persistPingIntervalMinutes,
+  persistTrackingActive,
+  startBackgroundLocation,
+  stopBackgroundLocation,
+} from '@/lib/backgroundLocation';
+import { getLastKnownLocation, requestLocation } from '@/lib/location';
 
 type TrackingContextValue = {
   trackingActive: boolean;
@@ -36,22 +44,43 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     Math.max(orgSettings?.gps_ping_interval_minutes ?? DEFAULT_PING_MINUTES, 1),
     60,
   );
-  const accuracyThresholdM = orgSettings?.location_accuracy_threshold_m ?? null;
 
   const refreshStatus = useCallback(async () => {
-    if (status !== 'signedIn') {
-      setTrackingActive(false);
-      return;
-    }
+    if (status !== 'signedIn') return;
     const today = await getTodayStatus().catch(() => null);
-    setTrackingActive(Boolean(today?.tracking_active));
+    // Network failure must not stop GPS while the screen is off.
+    if (!today) return;
+    const active = Boolean(today.tracking_active);
+    setTrackingActive(active);
+    if (active) {
+      await persistTrackingActive(true);
+      await startBackgroundLocation();
+    } else {
+      await persistTrackingActive(false);
+      await stopBackgroundLocation();
+    }
   }, [status]);
 
   useEffect(() => {
-    if (status !== 'signedIn') {
+    void persistPingIntervalMinutes(pingMinutes);
+  }, [pingMinutes]);
+
+  useEffect(() => {
+    void isPersistedTrackingActive().then((active) => {
+      if (!active) return;
+      setTrackingActive(true);
+      void startBackgroundLocation();
+    });
+  }, []);
+
+  useEffect(() => {
+    if (status === 'signedOut') {
       setTrackingActive(false);
+      void persistTrackingActive(false);
+      void stopBackgroundLocation();
       return;
     }
+    if (status !== 'signedIn') return;
     void refreshStatus();
     const id = setInterval(() => void refreshStatus(), 60_000);
     return () => clearInterval(id);
@@ -76,6 +105,17 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
   }, [refreshSettings, refreshStatus, status]);
 
   useEffect(() => {
+    if (status === 'signedOut') return;
+    if (!trackingActive) return;
+
+    void startBackgroundLocation();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void startBackgroundLocation();
+    });
+    return () => sub.remove();
+  }, [status, trackingActive]);
+
+  useEffect(() => {
     if (status !== 'signedIn' || !trackingActive) return;
 
     let cancelled = false;
@@ -93,23 +133,21 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
       }
       pingInFlight.current = true;
       try {
-        const loc = await requestLocation();
-        if (cancelled) return;
-        if (
-          accuracyThresholdM != null &&
-          loc.accuracy != null &&
-          loc.accuracy > accuracyThresholdM
-        ) {
-          return;
-        }
+        const loc =
+          (await requestLocation().catch(() => null)) ?? (await getLastKnownLocation());
+        if (cancelled || !loc) return;
         await pingLocation(loc.latitude, loc.longitude, loc.accuracy ?? undefined);
         lastPingAt.current = Date.now();
+        await markLocationPingSent(lastPingAt.current);
       } catch (err) {
         const httpStatus =
           err && typeof err === 'object' && 'status' in err
             ? Number((err as { status: number }).status)
             : 0;
-        if (httpStatus === 429) return;
+        if (httpStatus === 429) {
+          lastPingAt.current = Date.now();
+          await markLocationPingSent(lastPingAt.current);
+        }
       } finally {
         pingInFlight.current = false;
       }
@@ -121,7 +159,7 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [accuracyThresholdM, pingMinutes, status, trackingActive]);
+  }, [pingMinutes, status, trackingActive]);
 
   const value = useMemo(
     () => ({

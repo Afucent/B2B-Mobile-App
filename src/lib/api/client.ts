@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-import { getToken } from '@/lib/storage';
+import { getPersistedApiBase, getToken, persistApiBase } from '@/lib/storage';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 180_000;
 const DEFAULT_MUTATION_TIMEOUT_MS = 300_000;
@@ -34,6 +34,41 @@ function isLanHost(host: string): boolean {
   return /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
 }
 
+let rememberedApiBase: string | null = null;
+let storeHydrate: Promise<void> | null = null;
+
+export function isPlaceholderApiBase(url: string) {
+  return /10\.0\.2\.2|127\.0\.0\.1|localhost/i.test(url);
+}
+
+export function hydrateApiBaseCache(url: string | null | undefined) {
+  if (url?.trim()) {
+    rememberedApiBase = url.trim().replace(/\/$/, '');
+  }
+}
+
+/** Wait for SecureStore so headless pings do not hit 10.0.2.2 / localhost. */
+export async function ensureApiBaseReady(): Promise<string> {
+  if (rememberedApiBase && !isPlaceholderApiBase(rememberedApiBase)) {
+    return rememberedApiBase;
+  }
+  if (!storeHydrate) {
+    storeHydrate = getPersistedApiBase()
+      .then((url) => {
+        if (url) hydrateApiBaseCache(url);
+      })
+      .catch(() => undefined);
+  }
+  await storeHydrate;
+  return resolveApiBase();
+}
+
+function rememberApiBase(url: string) {
+  if (!url || url.includes('10.0.2.2') || url.includes('localhost')) return;
+  rememberedApiBase = url;
+  void persistApiBase(url);
+}
+
 function resolveApiBase(): string {
   const configured = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '');
 
@@ -42,12 +77,19 @@ function resolveApiBase(): string {
   if (__DEV__) {
     const devHost = getExpoDevHost();
     if (devHost && isLanHost(devHost)) {
-      return `http://${devHost}:${DEFAULT_API_PORT}${API_PATH}`;
+      const url = `http://${devHost}:${DEFAULT_API_PORT}${API_PATH}`;
+      rememberApiBase(url);
+      return url;
     }
   }
 
   if (configured) {
+    rememberApiBase(configured);
     return configured;
+  }
+
+  if (rememberedApiBase) {
+    return rememberedApiBase;
   }
 
   if (__DEV__ && Platform.OS === 'android') {
@@ -95,7 +137,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const { body, auth = true, headers, timeout, ...rest } = options;
   const method = (rest.method ?? 'GET').toUpperCase();
   const requestTimeoutMs = resolveRequestTimeoutMs(method, timeout);
-  const apiBase = getApiBase();
+  const apiBase = await ensureApiBaseReady();
 
   const requestHeaders: Record<string, string> = {
     Accept: 'application/json',

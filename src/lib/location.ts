@@ -24,6 +24,13 @@ export async function openDeviceSettings() {
   await Linking.openSettings();
 }
 
+export async function getLastKnownLocation(): Promise<DeviceLocation | null> {
+  const position = await Location.getLastKnownPositionAsync().catch(() => null);
+  if (!position?.coords) return null;
+  const { latitude, longitude, accuracy } = position.coords;
+  return { latitude, longitude, accuracy: accuracy ?? null, address: null };
+}
+
 export async function requestLocation(): Promise<DeviceLocation> {
   const enabled = await Location.hasServicesEnabledAsync();
   if (!enabled) {
