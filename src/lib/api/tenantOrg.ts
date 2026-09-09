@@ -4,6 +4,17 @@ export interface OrgProfile {
   id: string;
   name: string;
   company_code: string;
+  industry_type?: string;
+  industry_label?: string;
+  plan_name?: string | null;
+  plan_duration_months?: number | null;
+  status?: string;
+  admin?: {
+    name: string;
+    personal_email: string;
+    mobile?: string | null;
+    designation?: string | null;
+  };
   domain_name?: string | null;
   domain_email?: string | null;
   registered_address?: string | null;
@@ -29,7 +40,7 @@ export function getOrgProfile() {
 
 export function updateOrgProfile(data: Record<string, unknown>) {
   return apiRequest<OrgProfile>('/tenant/organization/profile', {
-    method: 'PUT',
+    method: 'PATCH',
     body: data,
   });
 }

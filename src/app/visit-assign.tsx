@@ -252,7 +252,8 @@ function AssignVisitModal({
         <View style={styles.modalCard}>
           <Text style={styles.modalTitle}>Add visit</Text>
           <Text style={styles.sub}>Pick a range, then set dealers for each working day.</Text>
-          <KeyboardSafeScrollView contentContainerStyle={{ gap: Spacing.sm, paddingBottom: 24 }}>
+          <KeyboardSafeScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: Spacing.sm, paddingBottom: 24 }} keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.label}>Employee *</Text>
             <Pressable style={styles.select} onPress={() => setShowEmployeePicker(true)}>
               <Text style={styles.selectText}>{employee?.name ?? 'Select employee'}</Text>
@@ -412,14 +413,22 @@ const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 20,
+    paddingBottom: 20,
   },
+
   modalCard: {
     backgroundColor: Colors.surface,
-    borderTopLeftRadius: Radius.lg,
-    borderTopRightRadius: Radius.lg,
-    padding: Spacing.md,
+    borderRadius: Radius.lg,
+    justifyContent: 'center',
+    alignSelf: 'center',
+    width: '92%',
     maxHeight: '92%',
+    flex: 1,
+    overflow: 'hidden',
+    padding: Spacing.md,
   },
   modalTitle: { fontSize: 18, fontWeight: '800', color: Colors.heading, marginBottom: 4 },
   label: {

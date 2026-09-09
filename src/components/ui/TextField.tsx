@@ -16,6 +16,7 @@ interface Props {
   secureTextEntry?: boolean;
   autoCorrect?: boolean;
   editable?: boolean;
+  multiline?: boolean;
 }
 
 export function TextField({
@@ -29,6 +30,7 @@ export function TextField({
   secureTextEntry,
   autoCorrect = false,
   editable = true,
+  multiline = false,
 }: Props) {
   const [hidden, setHidden] = useState(Boolean(secureTextEntry));
   const wrapRef = useRef<View>(null);
@@ -61,8 +63,10 @@ export function TextField({
           keyboardType={keyboardType}
           secureTextEntry={hidden}
           editable={editable}
+          multiline={multiline}
+          numberOfLines={multiline ? 4 : 1}
           onFocus={handleFocus}
-          style={styles.input}
+          style={[styles.input, multiline && styles.multilineInput]}
         />
         {secureTextEntry ? (
           <Pressable onPress={() => setHidden((v) => !v)} hitSlop={8}>
@@ -104,6 +108,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: Colors.heading,
     paddingVertical: 12,
+  },
+  multilineInput: {
+    minHeight: 104,
+    textAlignVertical: 'top',
   },
   error: {
     fontSize: 12,
