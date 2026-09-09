@@ -84,7 +84,8 @@ export function clockOut(latitude: number, longitude: number) {
 export function pingLocation(latitude: number, longitude: number, accuracy?: number) {
   return apiRequest('/attendance/location-ping', {
     method: 'POST',
-    timeout: 20_000,
+    // Keep short so a paused JS timer mid-background cannot hold the ping lock for long.
+    timeout: 12_000,
     body: {
       latitude,
       longitude,

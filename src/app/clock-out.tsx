@@ -9,7 +9,7 @@ import { Colors, Radius } from '@/constants/theme';
 import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
 import { useTracking } from '@/context/TrackingContext';
 import { clockOut, getTodayStatus, type AttendanceRecord } from '@/lib/api/attendance';
-import { stopBackgroundLocation } from '@/lib/backgroundLocation';
+import { forceStopBackgroundLocation } from '@/lib/backgroundLocation';
 import { durationLabel, formatClock } from '@/lib/format';
 import { requestLocation } from '@/lib/location';
 
@@ -42,7 +42,7 @@ export default function ClockOutScreen() {
     try {
       const loc = await requestLocation();
       const closed = await clockOut(loc.latitude, loc.longitude);
-      await stopBackgroundLocation().catch(() => undefined);
+      await forceStopBackgroundLocation().catch(() => undefined);
       await refreshStatus();
       router.replace({
         pathname: '/shift-complete',

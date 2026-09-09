@@ -10,6 +10,9 @@ export const SECURE_STORE_OPTIONS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
 };
 
+/** In-process cache so headless GPS tasks still auth while the FGS keeps the app alive. */
+let tokenMemory: string | null | undefined;
+
 async function setItem(key: string, value: string) {
   if (Platform.OS === 'web') {
     localStorage.setItem(key, value);
@@ -22,7 +25,11 @@ async function getItem(key: string) {
   if (Platform.OS === 'web') {
     return localStorage.getItem(key);
   }
-  return SecureStore.getItemAsync(key, SECURE_STORE_OPTIONS);
+  try {
+    return await SecureStore.getItemAsync(key, SECURE_STORE_OPTIONS);
+  } catch {
+    return null;
+  }
 }
 
 async function deleteItem(key: string) {
@@ -30,18 +37,27 @@ async function deleteItem(key: string) {
     localStorage.removeItem(key);
     return;
   }
-  await SecureStore.deleteItemAsync(key, SECURE_STORE_OPTIONS);
+  try {
+    await SecureStore.deleteItemAsync(key, SECURE_STORE_OPTIONS);
+  } catch {
+    // Key may already be gone after logout / keystore issues.
+  }
 }
 
 export async function getToken() {
-  return getItem(TOKEN_KEY);
+  if (tokenMemory !== undefined) return tokenMemory;
+  const value = await getItem(TOKEN_KEY);
+  tokenMemory = value;
+  return value;
 }
 
 export async function setToken(token: string) {
+  tokenMemory = token;
   await setItem(TOKEN_KEY, token);
 }
 
 export async function clearToken() {
+  tokenMemory = null;
   await deleteItem(TOKEN_KEY);
 }
 
