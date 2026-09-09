@@ -20,9 +20,16 @@ import {
 import { durationLabel, formatClock, formatKm } from '@/lib/format';
 import {
   backgroundStartErrorMessage,
+  beginTrackingStartGate,
+  endTrackingStartGate,
+  forceStopBackgroundLocation,
+  isBackgroundLocationRunning,
   persistPingIntervalMinutes,
+  persistTrackingActive,
+  scheduleBatteryOptimizationPrompt,
+  sendImmediateStartupPing,
   startBackgroundLocationResult,
-  stopBackgroundLocation,
+  warmBackgroundTrackingSession,
 } from '@/lib/backgroundLocation';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
 
@@ -101,12 +108,22 @@ export default function StartTrackingScreen() {
   async function onStartTracking() {
     setBusy(true);
     setError('');
+    beginTrackingStartGate();
     try {
       const next = loc ?? (await requestLocation());
       setLoc(next);
       await persistPingIntervalMinutes(pingMinutes);
+      await warmBackgroundTrackingSession();
+
+      // Server session must exist before any location-ping (otherwise API returns 403 and we used to tear GPS down).
+      await startLocation(next.latitude, next.longitude);
+      await persistTrackingActive(true);
+
       const gps = await startBackgroundLocationResult();
       if (!gps.ok) {
+        await forceStopBackgroundLocation().catch(() => undefined);
+        await endLocation(next.latitude, next.longitude).catch(() => undefined);
+        await refreshStatus();
         if (gps.reason === 'background_denied' || gps.reason === 'foreground_denied') {
           router.replace({
             pathname: '/location-required',
@@ -127,23 +144,24 @@ export default function StartTrackingScreen() {
         setError(backgroundStartErrorMessage(gps.reason));
         return;
       }
-      try {
-        await startLocation(next.latitude, next.longitude);
-      } catch (err) {
-        await stopBackgroundLocation().catch(() => undefined);
-        throw err;
-      }
-      await refresh();
-      const stillRunning = await startBackgroundLocationResult();
-      if (!stillRunning.ok) {
+
+      const nativeRunning = await isBackgroundLocationRunning();
+      if (!nativeRunning) {
+        await forceStopBackgroundLocation().catch(() => undefined);
         await endLocation(next.latitude, next.longitude).catch(() => undefined);
-        await stopBackgroundLocation().catch(() => undefined);
         await refreshStatus();
-        setError(backgroundStartErrorMessage(stillRunning.reason));
+        setError(backgroundStartErrorMessage('start_failed'));
+        return;
       }
+
+      await sendImmediateStartupPing();
+      scheduleBatteryOptimizationPrompt();
+      await refresh();
     } catch (err) {
+      await forceStopBackgroundLocation().catch(() => undefined);
       setError(err instanceof Error ? err.message : 'Unable to start tracking.');
     } finally {
+      endTrackingStartGate();
       setBusy(false);
     }
   }
@@ -155,7 +173,7 @@ export default function StartTrackingScreen() {
       const next = loc ?? (await requestLocation());
       setLoc(next);
       await endLocation(next.latitude, next.longitude);
-      await stopBackgroundLocation().catch(() => undefined);
+      await forceStopBackgroundLocation().catch(() => undefined);
       await refreshStatus();
       router.replace('/(app)/clock');
     } catch (err) {
@@ -255,8 +273,8 @@ export default function StartTrackingScreen() {
 
         <Text style={styles.note}>
           Tracking continues after you leave the app and turn the screen off. Allow location all
-          the time and keep the persistent location notification on. End tracking stops location
-          updates without clocking out.
+          the time, keep the persistent “AFBEX location tracking” notification on, and disable
+          battery optimization for AFBEX. End tracking stops location updates without clocking out.
         </Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}

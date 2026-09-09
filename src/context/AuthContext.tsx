@@ -109,8 +109,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    const { stopBackgroundLocation } = await import('@/lib/backgroundLocation');
-    await stopBackgroundLocation().catch(() => undefined);
+    const { forceStopBackgroundLocation } = await import('@/lib/backgroundLocation');
+    await forceStopBackgroundLocation().catch(() => undefined);
     await clearToken();
     setUser(null);
     setStatus('signedOut');
