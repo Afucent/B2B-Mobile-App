@@ -84,6 +84,18 @@ export function getAttendanceDayBoard(
   return apiRequest<AttendanceDayBoard>(`/attendance/day-board${q}`);
 }
 
+export type EmployeeMonthAttendance = {
+  employee_id: string;
+  month: string;
+  working_days: string[];
+  days: { date: string; status: 'present' | 'absent' | string }[];
+};
+
+export function getEmployeeMonthAttendance(employeeId: string, month: string) {
+  const params = new URLSearchParams({ employee_id: employeeId, month });
+  return apiRequest<EmployeeMonthAttendance>(`/attendance/employee-month?${params.toString()}`);
+}
+
 export function getLiveTrackingPanel() {
   return apiRequest<LiveTrackingPanel>('/attendance/panel');
 }
