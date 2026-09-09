@@ -47,17 +47,17 @@ export default function ForgotPasswordScreen() {
       <ScreenHeader title="Reset password" onBack={() => router.back()} />
       <KeyboardSafeScrollView contentContainerStyle={styles.body}>
         <Text style={styles.copy}>
-          Enter the email or mobile linked to your account.{'\n'}We’ll send a verification code.
+          Enter the email linked to your account.{'\n'}We’ll send a 6-digit verification code.
         </Text>
         <TextField
           label="Company code"
           value={companyCode}
           onChangeText={(v) => setCompanyCode(v.replace(/\D/g, '').slice(0, 4))}
           placeholder="e.g. 1001"
-          autoCapitalize="characters"
+          keyboardType="numeric"
         />
         <TextField
-          label="Email or mobile"
+          label="Email"
           value={identifier}
           onChangeText={setIdentifier}
           placeholder="you@company.com"

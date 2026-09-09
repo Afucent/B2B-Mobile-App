@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
@@ -19,22 +19,36 @@ export default function ResetPasswordScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const checks = useMemo(() => passwordChecks(password), [password]);
-  const verified = code.trim().length >= 6;
+  const otpReady = /^\d{6}$/.test(code.trim());
 
   async function onReset() {
     setError('');
+    if (!otpReady) {
+      setError('Enter the 6-digit verification code from your email.');
+      return;
+    }
     if (password !== confirm) {
       setError('Passwords do not match.');
       return;
     }
-    if (!checks.length || !checks.number || !checks.uppercase) {
+    if (password.length < 8 || !checks.number || !checks.uppercase) {
       setError('Password does not meet the requirements.');
       return;
     }
     setLoading(true);
     try {
       await orgResetPassword(code.trim(), password, confirm);
-      router.replace('/(auth)/login');
+      Alert.alert(
+        'Password successfully reset',
+        'Your password has been updated. You can now sign in with your new password.',
+        [
+          {
+            text: 'Continue to Sign In',
+            onPress: () => router.replace('/(auth)/login'),
+          },
+        ],
+        { cancelable: false },
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to reset password.');
     } finally {
@@ -46,22 +60,16 @@ export default function ResetPasswordScreen() {
     <View style={styles.flex}>
       <ScreenHeader title="Reset password" onBack={() => router.back()} />
       <KeyboardSafeScrollView contentContainerStyle={styles.body}>
-        {verified ? (
-          <View style={styles.verified}>
-            <Ionicons name="checkmark-circle" size={18} color={Colors.success} />
-            <Text style={styles.verifiedText}>Code verified</Text>
-          </View>
-        ) : (
-          <Text style={styles.copy}>
-            Paste the reset code sent to {params.email ?? 'your email'}.
-          </Text>
-        )}
+        <Text style={styles.copy}>
+          Enter the 6-digit code sent to {params.email ?? 'your email'}, then create a new password.
+        </Text>
 
         <TextField
           label="Verification code"
           value={code}
-          onChangeText={setCode}
-          placeholder="Enter code from email"
+          onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
+          placeholder="6-digit code"
+          keyboardType="numeric"
         />
         <TextField
           label="New password"
@@ -78,13 +86,18 @@ export default function ResetPasswordScreen() {
 
         <View>
           <Text style={styles.reqTitle}>Password requirements</Text>
-          <Requirement ok={checks.length} label="8+ characters" />
+          <Requirement ok={password.length >= 8} label="8+ characters" />
           <Requirement ok={checks.number} label="At least one number" />
           <Requirement ok={checks.uppercase} label="At least one uppercase letter" />
         </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <PrimaryButton label="Reset password" onPress={() => void onReset()} loading={loading} disabled={!verified} />
+        <PrimaryButton
+          label="Reset password"
+          onPress={() => void onReset()}
+          loading={loading}
+          disabled={!otpReady}
+        />
       </KeyboardSafeScrollView>
     </View>
   );
@@ -107,16 +120,6 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.background },
   body: { paddingHorizontal: 24, paddingBottom: 32, gap: 16 },
   copy: { fontSize: 15, color: Colors.text, lineHeight: 22 },
-  verified: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.successBg,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
-  verifiedText: { color: Colors.successText, fontWeight: '700' },
   reqTitle: {
     fontSize: 11,
     fontWeight: '700',

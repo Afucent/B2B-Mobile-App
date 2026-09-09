@@ -25,28 +25,30 @@ import {
   type AttendanceDayEntry,
   type AttendanceSummary,
 } from '@/lib/api/fieldOps';
-import { getMyLeaveRequests } from '@/lib/api/leave';
-import { getLeaveCalendar } from '@/lib/api/leaveAdmin';
 import { formatClock, hoursToLabel } from '@/lib/format';
-import { displayYmd, displayYmdRange, leaveStatusMeta, ymd } from '@/lib/leaveUi';
+import { displayYmd, ymd } from '@/lib/leaveUi';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type BoardFilter = 'all' | 'on' | 'off' | 'leave';
+type Audience = 'employee' | 'user';
+type StatusFilter = 'all' | 'present' | 'absent' | 'leave';
+type LocationFilter = 'all' | 'on' | 'off';
 
-const FILTERS: {
-  id: BoardFilter;
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-}[] = [
-  { id: 'all', label: 'All clocked in', icon: 'people-outline' },
-  { id: 'on', label: 'On location', icon: 'location-outline' },
-  { id: 'off', label: 'Off location', icon: 'locate-outline' },
-  { id: 'leave', label: 'On leave', icon: 'calendar-outline' },
-];
-
-function coversDay(from: string, to: string, day: string) {
-  return from.slice(0, 10) <= day && to.slice(0, 10) >= day;
-}
+type AttendanceRow = {
+  key: string;
+  name: string;
+  initials?: string;
+  designation?: string | null;
+  roles: string[];
+  city?: string | null;
+  accessSurface?: string;
+  clockIn: string | null;
+  clockOut: string | null;
+  hours: number | null | undefined;
+  status?: string | null;
+  dailyStatus: string;
+  onLocation: boolean;
+  address?: string | null;
+};
 
 export default function AdminAttendanceScreen() {
   return (
@@ -64,21 +66,14 @@ function AttendanceContent() {
 
   const [day, setDay] = useState(() => ymd(new Date()));
   const [showPicker, setShowPicker] = useState(false);
-  const [filter, setFilter] = useState<BoardFilter>('all');
+  const [audience, setAudience] = useState<Audience>('employee');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [locationFilter, setLocationFilter] = useState<LocationFilter>('all');
+  const [roleFilter, setRoleFilter] = useState('all');
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
-  const [board, setBoard] = useState<AttendanceDayBoard | null>(null);
+  const [employeeBoard, setEmployeeBoard] = useState<AttendanceDayBoard | null>(null);
+  const [userBoard, setUserBoard] = useState<AttendanceDayBoard | null>(null);
   const [selfRows, setSelfRows] = useState<AttendanceRecord[]>([]);
-  const [leaveRows, setLeaveRows] = useState<
-    Array<{
-      key: string;
-      name: string;
-      leaveType: string;
-      from: string;
-      to: string;
-      days: number;
-      status: string;
-    }>
-  >([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -87,71 +82,33 @@ function AttendanceContent() {
     setError('');
     try {
       if (canViewAll) {
-        const [sum, dayBoard, calendar] = await Promise.all([
+        const [sum, employees, users] = await Promise.all([
           getAttendanceDashboardSummary(day).catch(() => null),
-          getAttendanceDayBoard(day),
-          getLeaveCalendar({ month: day.slice(0, 7) }).catch(() => null),
+          getAttendanceDayBoard(day, 'employee'),
+          getAttendanceDayBoard(day, 'user'),
         ]);
         setSummary(sum);
-        setBoard(dayBoard);
-        console.log('board', dayBoard);
-        console.log('summary', sum);
+        setEmployeeBoard(employees);
+        setUserBoard(users);
         setSelfRows([]);
-        const fromCal =
-          calendar?.employees.flatMap((employee) =>
-            employee.leaves
-              .filter(
-                (entry) =>
-                  entry.status.toLowerCase() === 'approved' &&
-                  coversDay(entry.from_date, entry.to_date, day),
-              )
-              .map((entry) => ({
-                key: `${employee.employee_id}-${entry.request_id}`,
-                name: employee.employee_name,
-                leaveType: entry.leave_type_name,
-                from: entry.from_date,
-                to: entry.to_date,
-                days: entry.days,
-                status: entry.status,
-              })),
-          ) ?? [];
-        setLeaveRows(fromCal);
       } else {
-        const [history, myLeaves] = await Promise.all([
-          getMyHistory(90),
-          getMyLeaveRequests().catch(() => []),
-        ]);
+        const history = await getMyHistory(90);
         const mine = history.items.filter((r) => r.date.slice(0, 10) === day);
         setSelfRows(mine);
-        setBoard(null);
-        const onLeave = myLeaves.filter(
-          (leave) =>
-            leave.status.toLowerCase() === 'approved' &&
-            coversDay(leave.from_date, leave.to_date, day),
-        );
-        setLeaveRows(
-          onLeave.map((leave) => ({
-            key: leave.id,
-            name: user?.name ?? 'You',
-            leaveType: leave.leave_type_name,
-            from: leave.from_date,
-            to: leave.to_date,
-            days: leave.number_of_days,
-            status: leave.status,
-          })),
-        );
+        setEmployeeBoard(null);
+        setUserBoard(null);
         setSummary({
           present: mine.length > 0 ? 1 : 0,
-          on_leave: onLeave.length,
-          absent: mine.length === 0 && onLeave.length === 0 ? 1 : 0,
+          on_leave: 0,
+          absent: mine.length === 0 ? 1 : 0,
           total_users: 1,
         });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Request failed');
-      setBoard(null);
+      setEmployeeBoard(null);
+      setUserBoard(null);
       setSelfRows([]);
-      setLeaveRows([]);
     } finally {
       setLoading(false);
     }
@@ -163,64 +120,64 @@ function AttendanceContent() {
     }, [load]),
   );
 
-  const rows: Array<{
-    key: string;
-    name: string;
-    designation?: string | null;
-    clockIn: string | null;
-    clockOut: string | null;
-    hours: number | null | undefined;
-    status?: string | null;
-    onLocation?: boolean;
-    employeeId?: string;
-  }> = useMemo(() => {
+  const rows: AttendanceRow[] = useMemo(() => {
     if (canViewAll) {
+      const board = audience === 'employee' ? employeeBoard : userBoard;
       return (board?.items ?? []).map((item: AttendanceDayEntry) => ({
-        key: item.attendance_record_id,
+        key: item.employee_id,
         name: item.employee_name,
+        initials: item.employee_initials,
         designation: item.designation,
-        clockIn: item.clock_in_time,
+        roles: item.roles,
+        city: item.city,
+        accessSurface: item.access_surface,
+        clockIn: item.clock_in_time ?? null,
         clockOut: item.clock_out_time ?? null,
         hours: item.working_hours,
         status: item.status,
+        dailyStatus: item.daily_status,
         onLocation: item.on_location,
-        employeeId: item.employee_id,
+        address: item.last_address,
       }));
     }
     return selfRows.map((r) => ({
       key: r.id,
       name: user?.name ?? 'You',
+      initials: user?.name?.slice(0, 2).toUpperCase(),
       designation: user?.designation,
-      clockIn: r.clock_in_time,
+      roles: [],
+      clockIn: r.clock_in_time ?? null,
       clockOut: r.clock_out_time,
       hours: r.working_hours,
       status: r.status,
+      dailyStatus: 'present',
       onLocation: r.location_tracking_enabled && !r.clock_out_time,
-      employeeId: r.employee_id,
     }));
-  }, [canViewAll, board, selfRows, user]);
+  }, [audience, canViewAll, employeeBoard, selfRows, user, userBoard]);
 
   const filteredRows = useMemo(() => {
-    if (filter === 'on') return rows.filter((r) => r.onLocation);
-    if (filter === 'off') return rows.filter((r) => !r.onLocation);
-    return rows;
-  }, [rows, filter]);
+    return rows.filter((row) => {
+      const matchesStatus = statusFilter === 'all' || row.dailyStatus === statusFilter;
+      const matchesLocation =
+        locationFilter === 'all' ||
+        (row.dailyStatus === 'present' &&
+          (locationFilter === 'on' ? row.onLocation : !row.onLocation));
+      const matchesRole = roleFilter === 'all' || row.roles.includes(roleFilter);
+      return matchesStatus && matchesLocation && matchesRole;
+    });
+  }, [locationFilter, roleFilter, rows, statusFilter]);
 
-  const filterCounts: Record<BoardFilter, number> = {
-    all: board?.clocked_in ?? rows.length,
-    on: board?.on_location ?? rows.filter((r) => r.onLocation).length,
-    off: board?.off_location ?? rows.filter((r) => !r.onLocation).length,
-    leave: leaveRows.length,
+  const roleOptions = useMemo(() => {
+    const board = audience === 'employee' ? employeeBoard : userBoard;
+    return Array.from(new Set((board?.items ?? []).flatMap((item) => item.roles))).sort();
+  }, [audience, employeeBoard, userBoard]);
+
+  const activeBoard = audience === 'employee' ? employeeBoard : userBoard;
+  const metrics = {
+    total: activeBoard?.items.length ?? (canViewAll ? 0 : 1),
+    present: activeBoard?.items.filter((item) => item.daily_status === 'present').length ?? summary?.present ?? 0,
+    absent: activeBoard?.items.filter((item) => item.daily_status === 'absent').length ?? summary?.absent ?? 0,
   };
-
-  const emptyCopy =
-    filter === 'on'
-      ? 'No one on location for this day.'
-      : filter === 'off'
-        ? 'No one off location for this day.'
-        : filter === 'leave'
-          ? 'No one on leave for this day.'
-          : 'No attendance records for this day.';
 
   const insets = useSafeAreaInsets();
 
@@ -252,93 +209,94 @@ function AttendanceContent() {
         ) : null}
 
         <View style={styles.grid}>
-          <StatCard label="Present" value={summary?.present} />
-          <StatCard label="Absent" value={summary?.absent} />
-          {/* <StatCard label="On leave" value={summary?.on_leave} /> */}
-          {/* <StatCard label="Clocked in" value={canViewAll ? board?.clocked_in : rows.length} /> */}
-          {/* <StatCard
-            label="Clocked out"
-            value={
-              canViewAll
-                ? (board?.clocked_out ?? rows.filter((r) => r.clockOut).length)
-                : rows.filter((r) => r.clockOut).length
-            }
-          /> */}
+          <Pressable style={[styles.stat, audience === 'employee' && statusFilter === 'all' && styles.statActive]} onPress={() => { setAudience('employee'); setStatusFilter('all'); }}>
+            <Text style={styles.statValue}>{loading ? '--' : metrics.total}</Text>
+            <Text style={styles.statLabel}>Total employees</Text>
+          </Pressable>
+          <Pressable style={[styles.stat, styles.statPresent, audience === 'employee' && statusFilter === 'present' && styles.statActive]} onPress={() => { setAudience('employee'); setStatusFilter('present'); }}>
+            <Text style={[styles.statValue, styles.presentValue]}>{loading ? '--' : metrics.present}</Text>
+            <Text style={styles.statLabel}>Present</Text>
+          </Pressable>
+          <Pressable style={[styles.stat, styles.statAbsent, audience === 'employee' && statusFilter === 'absent' && styles.statActive]} onPress={() => { setAudience('employee'); setStatusFilter('absent'); }}>
+            <Text style={[styles.statValue, styles.absentValue]}>{loading ? '--' : metrics.absent}</Text>
+            <Text style={styles.statLabel}>Absent</Text>
+          </Pressable>
+          {canViewAll ? (
+            <Pressable style={[styles.stat, audience === 'user' && styles.statActive]} onPress={() => { setAudience('user'); setStatusFilter('all'); setLocationFilter('all'); setRoleFilter('all'); }}>
+              <Text style={styles.statValue}>{loading ? '--' : userBoard?.items.length ?? 0}</Text>
+              <Text style={styles.statLabel}>Users</Text>
+            </Pressable>
+          ) : null}
         </View>
 
-        <Text style={styles.section}>
-          {filter === 'leave' ? 'On leave' : 'Clock in / clock out'}
-        </Text>
-        <View style={styles.filters}>
-          {FILTERS.map((item) => {
-            const active = filter === item.id;
-            return (
-              <Pressable
-                key={item.id}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`${item.label}, ${filterCounts[item.id]}`}
-                onPress={() => setFilter(item.id)}
-                style={[styles.filterChip, active && styles.filterChipActive]}>
-                <Ionicons
-                  name={item.icon}
-                  size={14}
-                  color={active ? Colors.brand : Colors.muted}
-                />
-                <Text style={[styles.filterText, active && styles.filterTextActive]}>
-                  {item.label}
-                </Text>
-                <Text style={[styles.filterCount, active && styles.filterCountActive]}>
-                  {filterCounts[item.id]}
-                </Text>
+        {canViewAll ? (
+          <View style={styles.audienceRow}>
+            {(['employee', 'user'] as Audience[]).map((item) => (
+              <Pressable key={item} onPress={() => { setAudience(item); setStatusFilter('all'); setLocationFilter('all'); setRoleFilter('all'); }} style={[styles.audienceButton, audience === item && styles.audienceButtonActive]}>
+                <Ionicons name={item === 'employee' ? 'briefcase-outline' : 'people-outline'} size={16} color={audience === item ? Colors.brand : Colors.muted} />
+                <Text style={[styles.audienceText, audience === item && styles.audienceTextActive]}>{item === 'employee' ? 'Employees' : 'Users'}</Text>
               </Pressable>
-            );
-          })}
+            ))}
+          </View>
+        ) : null}
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.section}>{displayYmd(day)} · {audience === 'employee' ? 'Employee' : 'User'} attendance</Text>
+            <Text style={styles.meta}>Daily attendance, access and location status</Text>
+          </View>
+          <Text style={styles.resultCount}>{filteredRows.length}</Text>
         </View>
+        <Text style={styles.filterLabel}>Status</Text>
+        <View style={styles.filters}>
+          {(['all', 'present', 'absent', 'leave'] as StatusFilter[]).map((item) => (
+            <FilterChip key={item} label={item === 'all' ? 'All status' : item === 'leave' ? 'On leave' : item[0].toUpperCase() + item.slice(1)} active={statusFilter === item} onPress={() => setStatusFilter(item)} />
+          ))}
+        </View>
+        <Text style={styles.filterLabel}>Location</Text>
+        <View style={styles.filters}>
+          {(['all', 'on', 'off'] as LocationFilter[]).map((item) => (
+            <FilterChip key={item} label={item === 'all' ? 'All locations' : item === 'on' ? 'On location' : 'Off location'} active={locationFilter === item} onPress={() => setLocationFilter(item)} />
+          ))}
+        </View>
+        {roleOptions.length > 0 ? (
+          <>
+            <Text style={styles.filterLabel}>Role</Text>
+            <View style={styles.filters}>
+              <FilterChip label="All roles" active={roleFilter === 'all'} onPress={() => setRoleFilter('all')} />
+              {roleOptions.map((role) => <FilterChip key={role} label={role.replace(/_/g, ' ')} active={roleFilter === role} onPress={() => setRoleFilter(role)} />)}
+            </View>
+          </>
+        ) : null}
         {loading ? <Text style={styles.meta}>Loading…</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        {filter === 'leave' ? (
-          !loading && leaveRows.length === 0 ? (
-            <Text style={styles.meta}>{emptyCopy}</Text>
-          ) : (
-            leaveRows.map((row) => {
-              const meta = leaveStatusMeta(row.status);
-              return (
-                <View key={row.key} style={styles.row}>
-                  <Text style={styles.name}>{row.name}</Text>
-                  <Text style={styles.sub}>{row.leaveType}</Text>
-                  <Text style={styles.sub}>
-                    {displayYmdRange(row.from, row.to)} · {row.days} day
-                    {row.days === 1 ? '' : 's'}
-                  </Text>
-                  <View style={styles.badges}>
-                    <Text style={[styles.badge, { color: meta.color, backgroundColor: meta.bg }]}>
-                      {meta.label}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })
-          )
-        ) : !loading && filteredRows.length === 0 ? (
-          <Text style={styles.meta}>{emptyCopy}</Text>
+        {!loading && filteredRows.length === 0 ? (
+          <Text style={styles.empty}>No {audience === 'employee' ? 'employees' : 'users'} match this filter.</Text>
         ) : (
           filteredRows.map((row) => (
             <View key={row.key} style={styles.row}>
-              <Text style={styles.name}>{row.name}</Text>
-              {row.designation ? <Text style={styles.sub}>{row.designation}</Text> : null}
-              <View style={styles.times}>
-                <TimeCol label="Clock in" value={formatClock(row.clockIn)} />
-                <TimeCol label="Clock out" value={formatClock(row.clockOut)} />
-                <TimeCol label="Hours" value={hoursToLabel(row.hours ?? null)} />
+              <View style={styles.rowHeader}>
+                <View style={styles.identity}>
+                  <View style={styles.avatar}><Text style={styles.avatarText}>{row.initials ?? row.name.slice(0, 2).toUpperCase()}</Text></View>
+                  <View style={styles.identityText}>
+                    <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
+                    <Text style={styles.sub} numberOfLines={1}>{row.roles.join(', ') || row.designation || '—'}</Text>
+                  </View>
+                </View>
+                <Text style={[styles.statusBadge, row.dailyStatus === 'present' ? styles.badgePresent : row.dailyStatus === 'leave' ? styles.badgeLeave : styles.badgeAbsent]}>{row.dailyStatus}</Text>
               </View>
-              <View style={styles.badges}>
-                <Text style={[styles.badge, row.onLocation ? styles.badgeOn : styles.badgeOff]}>
-                  {row.onLocation ? 'On location' : 'Off location'}
-                </Text>
-                {row.status ? (
-                  <Text style={styles.badge}>{row.status.replace(/_/g, ' ')}</Text>
-                ) : null}
+              <View style={styles.detailGrid}>
+                <Detail label="City" value={row.city ?? '—'} />
+                <Detail label="Access" value={row.accessSurface === 'both' ? 'Web & Mobile' : row.accessSurface ?? '—'} />
+                <TimeCol label="In" value={formatClock(row.clockIn)} />
+                <TimeCol label="Out" value={formatClock(row.clockOut)} />
+                <Detail label="Hours" value={hoursToLabel(row.hours ?? null)} />
+                <Detail label="Location" value={row.onLocation ? 'On' : 'Off'} valueStyle={row.onLocation ? styles.locationOn : undefined} />
+              </View>
+              {row.address ? <Text style={styles.address} numberOfLines={2}>{row.address}</Text> : null}
+              <View style={styles.times}>
+                <Text style={[styles.badge, row.onLocation ? styles.badgeOn : styles.badgeOff]}>{row.onLocation ? 'On location' : 'Off location'}</Text>
+                {row.status ? <Text style={styles.badge}>{row.status.replace(/_/g, ' ')}</Text> : null}
               </View>
             </View>
           ))
@@ -348,11 +306,35 @@ function AttendanceContent() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value?: number | null }) {
+function FilterChip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
   return (
-    <View style={styles.stat}>
-      <Text style={styles.statValue}>{value ?? '—'}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
+    <Pressable style={[styles.filterChip, active && styles.filterChipActive]} onPress={onPress}>
+      <Text style={[styles.filterText, active && styles.filterTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function Detail({
+  label,
+  value,
+  valueStyle,
+}: {
+  label: string;
+  value: string;
+  valueStyle?: object;
+}) {
+  return (
+    <View style={styles.detail}>
+      <Text style={styles.timeLabel}>{label}</Text>
+      <Text style={[styles.timeValue, valueStyle]} numberOfLines={1}>{value}</Text>
     </View>
   );
 }
@@ -393,9 +375,22 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: Colors.brand,
   },
+  statActive: { borderColor: Colors.brand, backgroundColor: Colors.brandSoft },
+  statPresent: { borderLeftColor: Colors.success },
+  statAbsent: { borderLeftColor: Colors.danger },
   statValue: { fontSize: 24, fontWeight: '800', color: Colors.heading },
+  presentValue: { color: Colors.successText },
+  absentValue: { color: Colors.dangerText },
   statLabel: { marginTop: 4, color: Colors.muted, fontSize: 12, fontWeight: '600' },
+  audienceRow: { flexDirection: 'row', gap: Spacing.sm, backgroundColor: Colors.background, borderRadius: Radius.md, padding: 4, borderWidth: 1, borderColor: Colors.border },
+  audienceButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: Radius.sm, paddingVertical: 10 },
+  audienceButtonActive: { backgroundColor: Colors.brandSoft },
+  audienceText: { color: Colors.muted, fontSize: 13, fontWeight: '700' },
+  audienceTextActive: { color: Colors.brand },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
   section: { fontWeight: '800', color: Colors.heading, fontSize: 16 },
+  resultCount: { minWidth: 28, textAlign: 'center', color: Colors.brand, backgroundColor: Colors.brandSoft, borderRadius: Radius.pill, paddingHorizontal: 8, paddingVertical: 4, fontWeight: '800', fontSize: 12 },
+  filterLabel: { color: Colors.muted, fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: -8 },
   filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   filterChip: {
     flexDirection: 'row',
@@ -410,29 +405,40 @@ const styles = StyleSheet.create({
   },
   filterChipActive: {
     backgroundColor: Colors.brandSoft,
-    borderColor: Colors.brandSoft,
+    borderColor: Colors.brand,
   },
   filterText: { fontSize: 12, fontWeight: '600', color: Colors.muted },
   filterTextActive: { color: Colors.brand, fontWeight: '700' },
-  filterCount: { fontSize: 11, fontWeight: '800', color: Colors.muted },
-  filterCountActive: { color: Colors.brand },
   meta: { color: Colors.muted },
   error: { color: Colors.danger },
+  empty: { color: Colors.muted, textAlign: 'center', paddingVertical: Spacing.xl },
   row: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md,
     padding: Spacing.md,
-    gap: 6,
+    gap: 10,
     borderLeftWidth: 3,
     borderLeftColor: Colors.brand,
   },
+  rowHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing.sm },
+  identity: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
+  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.brandSoft },
+  avatarText: { color: Colors.brand, fontWeight: '800', fontSize: 13 },
+  identityText: { flex: 1, minWidth: 0 },
   name: { fontWeight: '800', color: Colors.heading, fontSize: 15 },
   sub: { color: Colors.muted, fontSize: 12 },
-  times: { flexDirection: 'row', marginTop: 6, gap: 8 },
-  timeCol: { flex: 1 },
+  statusBadge: { borderRadius: Radius.pill, paddingHorizontal: 9, paddingVertical: 5, fontSize: 11, fontWeight: '800', textTransform: 'capitalize', overflow: 'hidden' },
+  badgePresent: { color: Colors.successText, backgroundColor: Colors.successBg },
+  badgeAbsent: { color: Colors.dangerText, backgroundColor: Colors.dangerBg },
+  badgeLeave: { color: Colors.pendingText, backgroundColor: Colors.pendingBg },
+  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  detail: { width: '31%' },
+  timeCol: { width: '31%' },
   timeLabel: { fontSize: 11, color: Colors.muted, fontWeight: '600' },
   timeValue: { marginTop: 2, fontWeight: '700', color: Colors.heading },
-  badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  locationOn: { color: Colors.successText },
+  address: { color: Colors.muted, fontSize: 12 },
+  times: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   badge: {
     fontSize: 11,
     fontWeight: '700',

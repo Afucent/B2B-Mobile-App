@@ -49,11 +49,15 @@ export type AttendanceDayEntry = {
   employee_initials?: string;
   avatar_url?: string | null;
   designation?: string | null;
+  roles: string[];
+  city?: string | null;
+  access_surface?: 'web' | 'mobile' | 'both' | string;
   attendance_record_id: string;
-  clock_in_time: string;
+  clock_in_time?: string | null;
   clock_out_time?: string | null;
   working_hours?: number | null;
   status?: string | null;
+  daily_status: 'present' | 'absent' | 'leave' | string;
   on_location: boolean;
   last_latitude?: number | null;
   last_longitude?: number | null;
@@ -70,8 +74,13 @@ export type AttendanceDayBoard = {
   off_location: number;
 };
 
-export function getAttendanceDayBoard(date?: string) {
-  const q = date ? `?date=${encodeURIComponent(date)}` : '';
+export function getAttendanceDayBoard(
+  date?: string,
+  audience: 'employee' | 'user' = 'employee',
+) {
+  const params = new URLSearchParams({ audience });
+  if (date) params.set('date', date);
+  const q = `?${params.toString()}`;
   return apiRequest<AttendanceDayBoard>(`/attendance/day-board${q}`);
 }
 
