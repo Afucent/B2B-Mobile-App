@@ -14,6 +14,7 @@ import { useAuth } from '@/context/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { canViewDashboard } from '@/lib/tabNavigation';
 import { firstName, greetingForNow, initials } from '@/lib/format';
+import { getUnreadNotificationCount } from '@/lib/api/notifications';
 import { isFieldTrackingEnabled } from '@/lib/permissions';
 import { FieldVisit } from '@/lib/api/visits';
 
@@ -30,6 +31,7 @@ export default function HomeScreen() {
   const [visits, setVisits] = useState<FieldVisit[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [passwordModalDismissed, setPasswordModalDismissed] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const name = user?.name ?? 'there';
 
   const showDashboard = canViewDashboard({
@@ -64,6 +66,25 @@ export default function HomeScreen() {
     }
   }, [user?.must_change_password]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadUnread = () => {
+      void getUnreadNotificationCount()
+        .then((data) => {
+          if (!cancelled) setUnreadNotifications(data.unread_count);
+        })
+        .catch(() => {
+          if (!cancelled) setUnreadNotifications(0);
+        });
+    };
+    loadUnread();
+    const id = setInterval(loadUnread, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [user?.id]);
+
   async function onPasswordChanged() {
     await refresh();
     showToast('Password changed successfully');
@@ -72,6 +93,9 @@ export default function HomeScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setRefreshKey((k) => k + 1);
+    await getUnreadNotificationCount()
+      .then((data) => setUnreadNotifications(data.unread_count))
+      .catch(() => undefined);
     await new Promise((r) => setTimeout(r, 400));
     setRefreshing(false);
   }, []);
@@ -113,6 +137,13 @@ export default function HomeScreen() {
           <View style={styles.topActions}>
             <Pressable style={styles.iconBtn} onPress={() => router.push('/notifications')}>
               <Ionicons name="notifications-outline" size={22} color={Colors.heading} />
+              {unreadNotifications > 0 ? (
+                <View style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>
+                    {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                  </Text>
+                </View>
+              ) : null}
             </Pressable>
             <Pressable onPress={() => router.push('/(app)/profile')}>
               {user?.avatar_url ? (
@@ -168,7 +199,21 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
+  notifBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  notifBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   avatar: { width: 36, height: 36, borderRadius: 18 },
   avatarFallback: {
     width: 36,

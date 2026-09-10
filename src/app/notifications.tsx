@@ -1,13 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
-import { listNotifications, markNotificationRead, type AppNotification } from '@/lib/api/notifications';
+import {
+  deleteNotification,
+  listNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  resolveNotificationRoute,
+  type AppNotification,
+} from '@/lib/api/notifications';
 import { formatRelativeTime } from '@/lib/format';
+
+const NOTIFICATION_REFRESH_MS = 15_000;
 
 export default function NotificationsScreen() {
   const [items, setItems] = useState<AppNotification[]>([]);
@@ -26,6 +35,20 @@ export default function NotificationsScreen() {
     }, [load]),
   );
 
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (AppState.currentState === 'active') void load();
+    }, NOTIFICATION_REFRESH_MS);
+    const appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void load();
+    });
+
+    return () => {
+      clearInterval(intervalId);
+      appStateSubscription.remove();
+    };
+  }, [load]);
+
   const visible = filter === 'unread' ? items.filter((item) => !item.read_at) : items;
 
   async function onOpen(item: AppNotification) {
@@ -33,10 +56,15 @@ export default function NotificationsScreen() {
       await markNotificationRead(item.id).catch(() => undefined);
       await load();
     }
-    const title = item.title.toLowerCase();
-    if (title.includes('leave')) router.push('/(app)/leaves');
-    else if (title.includes('assignment') || title.includes('dealer')) router.push('/assignment');
-    else if (title.includes('clock')) router.push('/(app)/calendar');
+    const route = resolveNotificationRoute(item);
+    if (route) {
+      router.push(route as never);
+    }
+  }
+
+  async function onDelete(item: AppNotification) {
+    await deleteNotification(item.id).catch(() => undefined);
+    await load();
   }
 
   return (
@@ -55,6 +83,13 @@ export default function NotificationsScreen() {
       <View style={styles.tabs}>
         <Chip label="All" active={filter === 'all'} onPress={() => setFilter('all')} />
         <Chip label={`Unread (${unread})`} active={filter === 'unread'} onPress={() => setFilter('unread')} />
+        {unread ? (
+          <Chip
+            label="Mark all read"
+            active={false}
+            onPress={() => void markAllNotificationsRead().then(load)}
+          />
+        ) : null}
       </View>
       <ScrollView contentContainerStyle={styles.list}>
         {visible.length === 0 ? (
@@ -63,26 +98,32 @@ export default function NotificationsScreen() {
           visible.map((item) => {
             const unreadItem = !item.read_at;
             return (
-              <Pressable
-                key={item.id}
-                onPress={() => void onOpen(item)}
-                style={[styles.card, unreadItem && styles.cardUnread]}>
-                <View style={[styles.icon, unreadItem && styles.iconUnread]}>
-                  <Ionicons
-                    name={iconFor(item)}
-                    size={18}
-                    color={unreadItem ? Colors.brand : Colors.muted}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.titleRow}>
-                    <Text style={styles.title}>{item.title}</Text>
-                    {unreadItem ? <View style={styles.dot} /> : null}
+              <View key={item.id} style={[styles.card, unreadItem && styles.cardUnread]}>
+                <Pressable onPress={() => void onOpen(item)} style={styles.cardPressable}>
+                  <View style={[styles.icon, unreadItem && styles.iconUnread]}>
+                    <Ionicons
+                      name={iconFor(item)}
+                      size={18}
+                      color={unreadItem ? Colors.brand : Colors.muted}
+                    />
                   </View>
-                  <Text style={styles.message}>{item.message}</Text>
-                  <Text style={styles.time}>{formatRelativeTime(item.created_at)}</Text>
-                </View>
-              </Pressable>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.titleRow}>
+                      <Text style={styles.title}>{item.title}</Text>
+                      {unreadItem ? <View style={styles.dot} /> : null}
+                    </View>
+                    <Text style={styles.message}>{item.message}</Text>
+                    <Text style={styles.time}>{formatRelativeTime(item.created_at)}</Text>
+                  </View>
+                </Pressable>
+                <Pressable
+                  onPress={() => void onDelete(item)}
+                  style={styles.deleteBtn}
+                  accessibilityLabel={`Delete ${item.title}`}
+                >
+                  <Ionicons name="trash-outline" size={16} color={Colors.brand} />
+                </Pressable>
+              </View>
             );
           })
         )}
@@ -92,9 +133,16 @@ export default function NotificationsScreen() {
 }
 
 function iconFor(item: AppNotification): keyof typeof Ionicons.glyphMap {
-  const hay = `${item.title} ${item.category}`.toLowerCase();
+  const hay = `${item.title} ${item.category} ${item.event_type}`.toLowerCase();
   if (hay.includes('leave')) return 'briefcase-outline';
-  if (hay.includes('assignment') || hay.includes('dealer')) return 'business-outline';
+  if (hay.includes('visit')) return 'navigate-outline';
+  if (hay.includes('attendance') || hay.includes('tracking') || hay.includes('clock')) {
+    return 'time-outline';
+  }
+  if (hay.includes('security') || hay.includes('password')) return 'shield-checkmark-outline';
+  if (hay.includes('employee') || hay.includes('assignment') || hay.includes('dealer')) {
+    return 'people-outline';
+  }
   return 'notifications-outline';
 }
 
@@ -135,9 +183,23 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     padding: 14,
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  cardPressable: {
+    flex: 1,
+    flexDirection: 'row',
     gap: 12,
   },
   cardUnread: { backgroundColor: Colors.surfaceWarm },
+  deleteBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surface,
+  },
   icon: {
     width: 36,
     height: 36,
