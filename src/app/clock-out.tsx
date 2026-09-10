@@ -6,18 +6,34 @@ import FieldOpsSettingsSummary from '@/components/FieldOpsSettingsSummary';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
+import { useAuth } from '@/context/AuthContext';
 import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
 import { useTracking } from '@/context/TrackingContext';
-import { clockOut, getTodayStatus, type AttendanceRecord } from '@/lib/api/attendance';
+import {
+  clockOut,
+  getEmployeeLiveDetail,
+  getTodayStatus,
+  type AttendanceRecord,
+} from '@/lib/api/attendance';
+import { getMyVisits } from '@/lib/api/visits';
 import { forceStopBackgroundLocation } from '@/lib/backgroundLocation';
 import { durationLabel, formatClock } from '@/lib/format';
 import { requestLocation } from '@/lib/location';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+function hoursFromRange(inTime?: string | null, outTime?: string | null) {
+  if (!inTime || !outTime) return 0;
+  const ms = new Date(outTime).getTime() - new Date(inTime).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return 0;
+  return Math.round((ms / 3_600_000) * 100) / 100;
+}
 
 export default function ClockOutScreen() {
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(new Date());
+  const { user } = useAuth();
   const { settings, loading: settingsLoading } = useFieldOpsSettings();
   const { refreshStatus } = useTracking();
 
@@ -41,18 +57,37 @@ export default function ClockOutScreen() {
     setError('');
     try {
       const loc = await requestLocation();
+      // Capture shift stats while still clocked in — live detail may clear after clock-out.
+      const [live, visits] = await Promise.all([
+        user?.id ? getEmployeeLiveDetail(user.id).catch(() => null) : Promise.resolve(null),
+        getMyVisits().catch(() => null),
+      ]);
       const closed = await clockOut(loc.latitude, loc.longitude);
       await forceStopBackgroundLocation().catch(() => undefined);
       await refreshStatus();
+
+      const outTime = closed.clock_out_time ?? new Date().toISOString();
+      const hours =
+        closed.working_hours ?? hoursFromRange(closed.clock_in_time, outTime);
+      const done =
+        visits?.items.filter((v) => v.status.toLowerCase() === 'completed').length ??
+        live?.visits_completed ??
+        0;
+      const assigned =
+        visits?.total ??
+        visits?.items.length ??
+        live?.visits_assigned ??
+        0;
+
       router.replace({
         pathname: '/shift-complete',
         params: {
           inTime: closed.clock_in_time,
-          outTime: closed.clock_out_time ?? new Date().toISOString(),
-          hours: String(closed.working_hours ?? ''),
-          distance: '0',
-          visitsDone: '0',
-          visitsAssigned: '0',
+          outTime,
+          hours: String(hours),
+          distance: String(live?.distance_today_km ?? 0),
+          visitsDone: String(done),
+          visitsAssigned: String(assigned),
           lock: closed.id.slice(0, 6).toUpperCase(),
         },
       });
@@ -74,9 +109,10 @@ export default function ClockOutScreen() {
       setLoading(false);
     }
   }
+  const insets = useSafeAreaInsets();
 
   return (
-    <View style={styles.flex}>
+    <View style={[styles.flex, { paddingBottom: insets.bottom + 20 }]}>
       <ScreenHeader title="Clock Out" onBack={() => router.back()} />
       <View style={styles.sheet}>
         <View style={styles.card}>

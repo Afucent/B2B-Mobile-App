@@ -14,6 +14,7 @@ import { uploadMedia } from '@/lib/api/uploads';
 import { completeVisit } from '@/lib/api/visits';
 import { formatClock, formatLongDate } from '@/lib/format';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function routeParam(value?: string | string[]) {
   if (Array.isArray(value)) return value[0] ?? '';
@@ -97,11 +98,12 @@ export default function VisitCheckOutScreen() {
   const lat = loc?.latitude;
   const lon = loc?.longitude;
   const reachedAt = routeParam(params.reachedAt);
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Check-out" onBack={() => router.back()} />
-      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
+      <KeyboardSafeScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 20 }]}>
         <Text style={styles.dealer}>{routeParam(params.dealerName) || 'Dealer'}</Text>
         {reachedAt ? (
           <Text style={styles.meta}>Checked in · {formatClock(reachedAt)}</Text>
@@ -140,9 +142,9 @@ export default function VisitCheckOutScreen() {
                 {locLoading
                   ? 'Fetching GPS…'
                   : loc?.address ||
-                    (loc
-                      ? `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`
-                      : 'Location unavailable')}
+                  (loc
+                    ? `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`
+                    : 'Location unavailable')}
               </Text>
             </View>
           </View>

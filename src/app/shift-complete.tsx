@@ -7,23 +7,45 @@ import { Stamp } from '@/components/ui/Stamp';
 import { Colors, Radius } from '@/constants/theme';
 import { formatClock, formatDate, hoursToLabel } from '@/lib/format';
 
+function paramValue(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function hoursFromRange(inTime?: string, outTime?: string) {
+  if (!inTime || !outTime) return 0;
+  const ms = new Date(outTime).getTime() - new Date(inTime).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return 0;
+  return ms / 3_600_000;
+}
+
 export default function ShiftCompleteScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{
-    inTime?: string;
-    outTime?: string;
-    hours?: string;
-    distance?: string;
-    visitsDone?: string;
-    visitsAssigned?: string;
-    lock?: string;
+  const raw = useLocalSearchParams<{
+    inTime?: string | string[];
+    outTime?: string | string[];
+    hours?: string | string[];
+    distance?: string | string[];
+    visitsDone?: string | string[];
+    visitsAssigned?: string | string[];
+    lock?: string | string[];
   }>();
 
-  const hours = hoursToLabel(params.hours ? Number(params.hours) : 0);
-  const done = Number(params.visitsDone ?? 0);
-  const assigned = Number(params.visitsAssigned ?? 0) || Math.max(done, 1);
-  const progress = Math.round((done / assigned) * 100);
-  const out = params.outTime ?? new Date().toISOString();
+  const inTime = paramValue(raw.inTime);
+  const outTime = paramValue(raw.outTime);
+  const hoursParam = paramValue(raw.hours);
+  const distanceParam = paramValue(raw.distance);
+  const visitsDone = paramValue(raw.visitsDone);
+  const visitsAssigned = paramValue(raw.visitsAssigned);
+  const lock = paramValue(raw.lock);
+
+  const parsedHours = hoursParam != null && hoursParam !== '' ? Number(hoursParam) : NaN;
+  const hoursValue = Number.isFinite(parsedHours) ? parsedHours : hoursFromRange(inTime, outTime);
+  const hours = hoursToLabel(hoursValue);
+  const done = Number(visitsDone ?? 0) || 0;
+  const assigned = Number(visitsAssigned ?? 0) || Math.max(done, 1);
+  const progress = assigned > 0 ? Math.round((done / assigned) * 100) : 0;
+  const out = outTime ?? new Date().toISOString();
+  const distance = Number(distanceParam ?? 0) || 0;
 
   return (
     <View style={styles.screen}>
@@ -34,7 +56,7 @@ export default function ShiftCompleteScreen() {
         <Text style={styles.hours}>{hours}</Text>
 
         <View style={styles.card}>
-          <Row label="Total Distance:" value={`${Number(params.distance ?? 0).toFixed(1)} km`} />
+          <Row label="Total Distance:" value={`${distance.toFixed(1)} km`} />
           <Row label="Visits completed:" value={`${done} of ${assigned} dealers`} />
           <Text style={styles.progressLabel}>Route completion progress</Text>
           <View style={styles.track}>
@@ -44,9 +66,9 @@ export default function ShiftCompleteScreen() {
         </View>
 
         <Text style={styles.meta}>
-          Clocked in: {formatClock(params.inTime)} · Clocked out: {formatClock(out)}
+          Clocked in: {formatClock(inTime)} · Clocked out: {formatClock(out)}
         </Text>
-        <Text style={styles.lock}>Digital signature lock reference: #{params.lock ?? 'A1B2C3'}</Text>
+        <Text style={styles.lock}>Digital signature lock reference: #{lock ?? 'A1B2C3'}</Text>
       </View>
       <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
         <PrimaryButton label="Back to Dashboard" onPress={() => router.replace('/(app)')} />
