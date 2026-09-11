@@ -6,6 +6,7 @@ import { AppState, Linking, PermissionsAndroid, Platform } from 'react-native';
 
 import { ensureApiBaseReady, hydrateApiBaseCache, isPlaceholderApiBase } from '@/lib/api/client';
 import { pingLocation } from '@/lib/api/attendance';
+import { emitMobileGpsLog, classifyPingServerError, logGpsFailure, logGpsSkipWhy, reportGpsRuntimeStatus } from '@/lib/axiomGps';
 import { getPersistedApiBase, getToken, SECURE_STORE_OPTIONS } from '@/lib/storage';
 
 export const BACKGROUND_LOCATION_TASK = 'afbex-background-location';
@@ -86,6 +87,16 @@ function logGps(message: string, detail?: unknown) {
     return;
   }
   console.warn(LOG_PREFIX, message);
+}
+
+function detailString(detail?: unknown) {
+  if (detail == null) return undefined;
+  if (typeof detail === 'string') return detail;
+  try {
+    return JSON.stringify(detail);
+  } catch {
+    return String(detail);
+  }
 }
 
 /** Rate-limit noisy skip logs so Metro stays readable. */
@@ -250,24 +261,52 @@ export async function sendThrottledTrackingPing(
   if (isPingLocked(now)) {
     pendingPing = { latitude, longitude, accuracy };
     logGpsSkip('skip: ping lock held (queued latest coords)');
+    void logGpsSkipWhy({
+      reason: 'ping_lock',
+      latitude,
+      longitude,
+      accuracyMeters: accuracy,
+    });
     return false;
   }
 
   try {
     if (!(await isPersistedTrackingActive())) {
       logGpsSkip('skip: tracking not active');
+      void logGpsFailure({
+        reason: 'tracking_not_active',
+        latitude,
+        longitude,
+        accuracyMeters: accuracy,
+        trackingActive: false,
+      });
       return false;
     }
 
     const token = await getToken().catch(() => null);
     if (!token) {
       logGps('skip: no auth token');
+      void logGpsFailure({
+        reason: 'no_auth_token',
+        latitude,
+        longitude,
+        accuracyMeters: accuracy,
+        trackingActive: true,
+      });
       return false;
     }
 
     const apiBase = await ensureApiBaseReady().catch(() => '');
     if (!apiBase || (isPlaceholderApiBase(apiBase) && !__DEV__)) {
       logGps('skip: invalid API base', apiBase || '(empty)');
+      void logGpsFailure({
+        reason: 'invalid_api_base',
+        detail: `API base invalid: ${apiBase || '(empty)'}`,
+        latitude,
+        longitude,
+        accuracyMeters: accuracy,
+        trackingActive: true,
+      });
       return false;
     }
 
@@ -275,8 +314,16 @@ export async function sendThrottledTrackingPing(
     const lastPingAt = await getLastPingAt();
     const checkedAt = Date.now();
     if (!force && lastPingAt != null && checkedAt - lastPingAt < pingMs - 5000) {
+      const remainingMs = pingMs - (checkedAt - lastPingAt);
       pendingPing = { latitude, longitude, accuracy };
-      logGpsSkip('skip: throttled', { remainingMs: pingMs - (checkedAt - lastPingAt) });
+      logGpsSkip('skip: throttled', { remainingMs });
+      void logGpsSkipWhy({
+        reason: 'client_throttled',
+        remainingMs,
+        latitude,
+        longitude,
+        accuracyMeters: accuracy,
+      });
       return false;
     }
 
@@ -287,31 +334,72 @@ export async function sendThrottledTrackingPing(
       if (generation !== pingGeneration) return false;
       await markLocationPingSent(Date.now());
       logGps('ping_ok', { latitude, longitude, accuracy });
+      void emitMobileGpsLog({
+        event: 'location.ping_client',
+        outcome: 'accepted',
+        reason: 'sent',
+        why: 'Ping accepted by backend and recorded.',
+        latitude,
+        longitude,
+        accuracyMeters: accuracy,
+        trackingActive: true,
+        failed: false,
+        force: true,
+      });
       return true;
     } catch (err) {
       if (generation !== pingGeneration) return false;
       const status = httpStatusOf(err);
+      const message = errorMessageOf(err);
+      const classified = classifyPingServerError(status, message);
+
       if (status === 429) {
         await markLocationPingSent(Date.now());
         logGps('ping_throttled_by_server');
+        void emitMobileGpsLog({
+          event: 'location.ping_client',
+          outcome: 'rejected',
+          reason: classified.reason,
+          why: classified.why,
+          detail: message || classified.why,
+          statusCode: 429,
+          latitude,
+          longitude,
+          accuracyMeters: accuracy,
+          trackingActive: true,
+          failed: false,
+          force: true,
+        });
         return false;
       }
-      const msg = errorMessageOf(err).toLowerCase();
-      const serverSessionNotReady =
-        (status === 400 || status === 403 || status === 409) &&
-        (msg.includes('not started') ||
-          msg.includes('tracking was not started') ||
-          msg.includes('location tracking was not started'));
-      if (serverSessionNotReady) {
-        logGps('ping_fail: server session not ready yet', { status, message: errorMessageOf(err) });
-        return false;
-      }
-      const sessionOver =
-        status === 401 ||
-        status === 403 ||
-        (status === 400 &&
-          (msg.includes('clock') || msg.includes('shift ended') || msg.includes('clocked out')));
-      logGps('ping_fail', { status, message: errorMessageOf(err) });
+
+      logGps('ping_fail', { status, message, reason: classified.reason });
+      void logGpsFailure({
+        reason: classified.reason,
+        why: classified.why,
+        detail: message || classified.why,
+        statusCode: status,
+        latitude,
+        longitude,
+        accuracyMeters: accuracy,
+        trackingActive: true,
+      });
+      void emitMobileGpsLog({
+        event: 'location.ping_client',
+        outcome: 'rejected',
+        reason: classified.reason,
+        why: classified.why,
+        detail: message || classified.why,
+        statusCode: status,
+        latitude,
+        longitude,
+        accuracyMeters: accuracy,
+        trackingActive: true,
+        failed: true,
+        force: true,
+      });
+
+      const sessionOver = classified.reason === 'session_over';
       if (sessionOver && !isTrackingStartInProgress()) {
         await persistTrackingActive(false);
         await stopBackgroundLocation().catch(() => undefined);
@@ -323,6 +411,13 @@ export async function sendThrottledTrackingPing(
     }
   } catch (err) {
     logGps('ping unexpected error', err);
+    void logGpsFailure({
+      reason: 'unexpected_error',
+      detail: detailString(err),
+      latitude,
+      longitude,
+      accuracyMeters: accuracy,
+    });
     pingLockUntil = 0;
     return false;
   }
@@ -410,12 +505,19 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
   try {
     if (error) {
       logGps('task error', error);
+      void logGpsFailure({
+        reason: 'task_error',
+        detail: detailString(error),
+        nativeRunning: true,
+        trackingActive: true,
+      });
       return;
     }
     const locations = (data as { locations?: Location.LocationObject[] } | undefined)?.locations;
     const latest = locations?.length ? locations[locations.length - 1] : null;
     const coords = latest?.coords;
     if (coords) {
+      // Do not spam Axiom with every GPS wake — only ping attempts / failures matter.
       await sendThrottledTrackingPing(coords.latitude, coords.longitude, coords.accuracy);
       return;
     }
@@ -429,9 +531,21 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
       return;
     }
     logGps('task update with no coordinates');
+    void logGpsFailure({
+      reason: 'no_coordinates',
+      detail: 'Native GPS callback fired but returned no coordinates.',
+      nativeRunning: true,
+      trackingActive: true,
+    });
   } catch (err) {
     // Headless task must not throw or Android will drop later updates.
     logGps('task handler crashed (swallowed)', err);
+    void logGpsFailure({
+      reason: 'handler_crashed',
+      detail: detailString(err),
+      nativeRunning: true,
+      trackingActive: true,
+    });
   }
 });
 
@@ -532,6 +646,13 @@ export async function startBackgroundLocationResult(): Promise<BackgroundLocatio
   try {
     const available = await TaskManager.isAvailableAsync().catch(() => false);
     if (!available || !TaskManager.isTaskDefined(BACKGROUND_LOCATION_TASK)) {
+      void emitMobileGpsLog({
+        event: 'location.native_start',
+        outcome: 'rejected',
+        reason: 'unavailable',
+        nativeRunning: false,
+        force: true,
+      });
       return { ok: false, reason: 'unavailable' };
     }
 
@@ -541,21 +662,48 @@ export async function startBackgroundLocationResult(): Promise<BackgroundLocatio
     if (already) {
       await persistTrackingActive(true);
       logGps('already running');
+      void reportGpsRuntimeStatus({
+        trackingActive: true,
+        nativeRunning: true,
+        reason: 'already_running',
+        force: true,
+      });
       return { ok: true };
     }
 
     // Android 12+ rejects starting a foreground service while backgrounded.
     if (AppState.currentState !== 'active') {
+      void emitMobileGpsLog({
+        event: 'location.native_start',
+        outcome: 'rejected',
+        reason: 'backgrounded',
+        nativeRunning: false,
+        force: true,
+      });
       return { ok: false, reason: 'backgrounded' };
     }
 
     const allowed = await ensureLocationPermissions();
     if (allowed !== true) {
+      void emitMobileGpsLog({
+        event: 'location.permission',
+        outcome: 'rejected',
+        reason: allowed,
+        nativeRunning: false,
+        force: true,
+      });
       return { ok: false, reason: allowed };
     }
 
     const foreground = await waitUntilAppActive();
     if (!foreground) {
+      void emitMobileGpsLog({
+        event: 'location.native_start',
+        outcome: 'rejected',
+        reason: 'backgrounded',
+        nativeRunning: false,
+        force: true,
+      });
       return { ok: false, reason: 'backgrounded' };
     }
 
@@ -564,11 +712,31 @@ export async function startBackgroundLocationResult(): Promise<BackgroundLocatio
       const running = await isBackgroundLocationRunning();
       if (!running) {
         logGps('started but hasStartedLocationUpdatesAsync=false');
+        void reportGpsRuntimeStatus({
+          trackingActive: true,
+          nativeRunning: false,
+          reason: 'start_failed_not_running',
+          force: true,
+        });
         return { ok: false, reason: 'start_failed' };
       }
       await persistTrackingActive(true);
       await warmBackgroundTrackingSession();
       logGps('native location updates started');
+      void emitMobileGpsLog({
+        event: 'location.native_start',
+        outcome: 'accepted',
+        reason: 'started',
+        nativeRunning: true,
+        trackingActive: true,
+        force: true,
+      });
+      void reportGpsRuntimeStatus({
+        trackingActive: true,
+        nativeRunning: true,
+        reason: 'started',
+        force: true,
+      });
       return { ok: true };
     } catch (err) {
       const stillRunning = await isBackgroundLocationRunning();
@@ -576,16 +744,46 @@ export async function startBackgroundLocationResult(): Promise<BackgroundLocatio
         await persistTrackingActive(true);
         await warmBackgroundTrackingSession();
         logGps('start threw but updates are running', err);
+        void reportGpsRuntimeStatus({
+          trackingActive: true,
+          nativeRunning: true,
+          reason: 'started_after_throw',
+          force: true,
+        });
         return { ok: true };
       }
       if (AppState.currentState !== 'active') {
+        void emitMobileGpsLog({
+          event: 'location.native_start',
+          outcome: 'rejected',
+          reason: 'backgrounded',
+          detail: detailString(err),
+          nativeRunning: false,
+          force: true,
+        });
         return { ok: false, reason: 'backgrounded' };
       }
       logGps('failed to start', err);
+      void emitMobileGpsLog({
+        event: 'location.native_start',
+        outcome: 'rejected',
+        reason: 'start_failed',
+        detail: detailString(err),
+        nativeRunning: false,
+        force: true,
+      });
       return { ok: false, reason: 'start_failed' };
     }
   } catch (err) {
     logGps('startBackgroundLocationResult unexpected', err);
+    void emitMobileGpsLog({
+      event: 'location.native_start',
+      outcome: 'rejected',
+      reason: 'start_failed',
+      detail: detailString(err),
+      nativeRunning: false,
+      force: true,
+    });
     return { ok: false, reason: 'start_failed' };
   }
 }
@@ -608,6 +806,20 @@ export async function stopBackgroundLocation() {
       await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
       logGps('native location updates stopped');
     }
+    void emitMobileGpsLog({
+      event: 'location.native_stop',
+      outcome: 'accepted',
+      reason: 'stopped',
+      nativeRunning: false,
+      trackingActive: false,
+      force: true,
+    });
+    void reportGpsRuntimeStatus({
+      trackingActive: false,
+      nativeRunning: false,
+      reason: 'stopped',
+      force: true,
+    });
   } catch (err) {
     // Task may already be unregistered after clock-out / logout.
     logGps('stop ignored', err);
@@ -626,7 +838,34 @@ export async function forceStopBackgroundLocation() {
       await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
       logGps('native location updates force-stopped');
     }
+    void emitMobileGpsLog({
+      event: 'location.native_stop',
+      outcome: 'accepted',
+      reason: 'force_stopped',
+      nativeRunning: false,
+      trackingActive: false,
+      force: true,
+    });
+    void reportGpsRuntimeStatus({
+      trackingActive: false,
+      nativeRunning: false,
+      reason: 'force_stopped',
+      force: true,
+    });
   } catch (err) {
     logGps('force-stop ignored', err);
   }
+}
+
+/** Report whether native GPS is currently running (for Axiom dashboards). */
+export async function publishGpsRuntimeStatus(reason = 'heartbeat') {
+  const trackingActive = await isPersistedTrackingActive();
+  const nativeRunning = await isBackgroundLocationRunning();
+  await reportGpsRuntimeStatus({
+    trackingActive,
+    nativeRunning,
+    reason,
+    force: reason !== 'heartbeat',
+  });
+  return { trackingActive, nativeRunning };
 }

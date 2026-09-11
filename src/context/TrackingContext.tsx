@@ -19,6 +19,7 @@ import {
   isTrackingStartInProgress,
   persistPingIntervalMinutes,
   persistTrackingActive,
+  publishGpsRuntimeStatus,
   sendCatchUpTrackingPingIfDue,
   startBackgroundLocation,
   stopBackgroundLocation,
@@ -60,8 +61,10 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
         await persistTrackingActive(true);
         await warmBackgroundTrackingSession();
         const running = await isBackgroundLocationRunning();
+        await publishGpsRuntimeStatus(running ? 'status_running' : 'status_not_running');
         if (!running && AppState.currentState === 'active') {
           await startBackgroundLocation();
+          await publishGpsRuntimeStatus('restart_after_status');
         }
         return;
       }
@@ -74,6 +77,7 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
       setTrackingActive(false);
       await persistTrackingActive(false);
       await stopBackgroundLocation();
+      await publishGpsRuntimeStatus('status_idle');
     } catch {
       // Keep existing tracking state on unexpected errors.
     }
@@ -121,6 +125,7 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
       if (next !== 'active') return;
       void refreshSettings();
       void refreshStatus();
+      void publishGpsRuntimeStatus('app_foreground');
       if (trackingActive) {
         void warmBackgroundTrackingSession();
         void startBackgroundLocation();
@@ -138,6 +143,11 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     if (AppState.currentState === 'active') {
       void startBackgroundLocation();
     }
+    const id = setInterval(() => {
+      void publishGpsRuntimeStatus('heartbeat');
+    }, 60_000);
+    void publishGpsRuntimeStatus('tracking_active');
+    return () => clearInterval(id);
   }, [status, trackingActive]);
 
   const value = useMemo(
