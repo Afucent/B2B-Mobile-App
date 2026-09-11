@@ -23,11 +23,12 @@ function FieldContent() {
   const { user } = useAuth();
   const { canView, canCreate, canManage } = usePermissions();
 
+  const fieldTrackingEnabled = isFieldTrackingEnabled(user?.organization?.enabled_modules);
   const fieldSections = buildFieldTabSections({
     canView,
     canCreate,
     canManage,
-    fieldTrackingEnabled: isFieldTrackingEnabled(user?.organization?.enabled_modules),
+    fieldTrackingEnabled,
   });
 
   return (
