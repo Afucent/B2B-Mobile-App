@@ -7,7 +7,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { DateField } from '@/components/ui/DateField';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius, Spacing } from '@/constants/theme';
-import { getMyVisits, type FieldVisit } from '@/lib/api/visits';
+import { useAuth } from '@/context/AuthContext';
+import { usePermissions } from '@/hooks/usePermissions';
+import { getMyVisits, getVisitHistory, type FieldVisit } from '@/lib/api/visits';
 import { formatDate } from '@/lib/format';
 import { parseYmd, ymd } from '@/lib/leaveUi';
 
@@ -18,16 +20,37 @@ function shiftDay(day: string, delta: number) {
 }
 
 export default function VisitsScreen() {
+  const { user } = useAuth();
+  const { canView, canCreate } = usePermissions();
   const [day, setDay] = useState(() => ymd(new Date()));
   const [visits, setVisits] = useState<FieldVisit[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const canUseMyVisitsApi = canView('field_visits') || canCreate('field_visits');
+  const canUseHistoryApi = canView('visit_history');
+
   const load = useCallback(async () => {
     setLoading(true);
-    const res = await getMyVisits(day).catch(() => ({ items: [] as FieldVisit[] }));
+    let res: { items: FieldVisit[] } = { items: [] };
+    try {
+      if (canUseMyVisitsApi) {
+        res = await getMyVisits(day);
+      } else if (canUseHistoryApi && user?.id) {
+        res = await getVisitHistory({
+          employee_id: user.id,
+          from_date: day,
+          to_date: day,
+          limit: 50,
+        });
+      } else {
+        res = await getMyVisits(day);
+      }
+    } catch {
+      res = { items: [] };
+    }
     setVisits(res.items);
     setLoading(false);
-  }, [day]);
+  }, [day, canUseMyVisitsApi, canUseHistoryApi, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -35,7 +58,10 @@ export default function VisitsScreen() {
     }, [load]),
   );
 
-  const pending = visits.filter((v) => v.status === 'assigned' || v.status === 'in_progress');
+  const pending = visits.filter((v) => {
+    const status = v.status.toLowerCase();
+    return status === 'assigned' || status === 'in_progress';
+  });
   const isToday = day === ymd(new Date());
 
   return (

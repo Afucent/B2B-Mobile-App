@@ -8,6 +8,7 @@ import { OutlineButton } from '@/components/ui/OutlineButton';
 import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
+import { SafeScreen } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
 import { Colors, Radius, Spacing } from '@/constants/theme';
@@ -40,7 +41,7 @@ export default function AdminCreateUserScreen() {
     mobile: '',
     designation: '',
     department: '',
-    role_id: '',
+    role_ids: [] as string[],
     dealer_ids: [] as string[],
     access_surface: 'both' as 'web' | 'mobile' | 'both',
     address: '',
@@ -63,23 +64,44 @@ export default function AdminCreateUserScreen() {
           const assignable = res.filter((r) => isAssignableRoleName(r.name));
           setRoles(assignable);
           if (assignable[0]) {
-            setForm((f) => ({ ...f, role_id: f.role_id || assignable[0].id }));
+            setForm((f) => ({
+              ...f,
+              role_ids: f.role_ids.length > 0 ? f.role_ids : [assignable[0].id],
+            }));
           }
         })
         .catch(() => setRoles([]));
     }, []),
   );
 
-  const selectedRole = roles.find((r) => r.id === form.role_id);
-  const isDealerRole = selectedRole ? isDealerRoleName(selectedRole.name) : false;
+  const selectedRoles = roles.filter((r) => form.role_ids.includes(r.id));
+  const isDealerRole = selectedRoles.some((r) => isDealerRoleName(r.name));
 
   function update<K extends keyof typeof form>(field: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
+  function toggleRole(roleId: string) {
+    setForm((prev) => {
+      const has = prev.role_ids.includes(roleId);
+      const role_ids = has
+        ? prev.role_ids.filter((id) => id !== roleId)
+        : [...prev.role_ids, roleId];
+      const anyDealer = role_ids.some((id) => {
+        const role = roles.find((r) => r.id === id);
+        return role ? isDealerRoleName(role.name) : false;
+      });
+      return {
+        ...prev,
+        role_ids,
+        dealer_ids: anyDealer ? [] : prev.dealer_ids,
+      };
+    });
+  }
+
   function validateStep1() {
-    if (!form.name.trim() || !form.personal_email.trim() || !form.role_id) {
-      setError('Name, email, and role are required.');
+    if (!form.name.trim() || !form.personal_email.trim() || form.role_ids.length === 0) {
+      setError('Name, email, and at least one role are required.');
       return false;
     }
     if (!form.state.trim() || !form.city.trim() || !form.area.trim() || !form.pin_code.trim()) {
@@ -123,7 +145,8 @@ export default function AdminCreateUserScreen() {
         mobile: form.mobile.trim() || null,
         designation: form.designation.trim() || null,
         department: form.department.trim() || null,
-        role_id: form.role_id,
+        role_id: form.role_ids[0],
+        role_ids: form.role_ids,
         dealer_ids: isDealerRole ? [] : form.dealer_ids,
         access_surface: form.access_surface,
         address: form.address.trim() || null,
@@ -162,7 +185,7 @@ export default function AdminCreateUserScreen() {
 
   return (
     <RequireModuleAccess module="users" action="create">
-      <View style={styles.flex}>
+      <SafeScreen>
         <ScreenHeader title="New user" onBack={() => router.back()} />
         <KeyboardSafeScrollView contentContainerStyle={styles.body}>
           <Text style={styles.step}>Step {step} of 2</Text>
@@ -203,23 +226,19 @@ export default function AdminCreateUserScreen() {
 
               <Text style={styles.group}>Role *</Text>
               <View style={styles.chips}>
-                {roles.map((role) => (
-                  <Pressable
-                    key={role.id}
-                    style={[styles.chip, form.role_id === role.id && styles.chipOn]}
-                    onPress={() => {
-                      update('role_id', role.id);
-                      if (isDealerRoleName(role.name)) update('dealer_ids', []);
-                    }}>
-                    <Text
-                      style={[
-                        styles.chipText,
-                        form.role_id === role.id && styles.chipTextOn,
-                      ]}>
-                      {formatRoleName(role.name)}
-                    </Text>
-                  </Pressable>
-                ))}
+                {roles.map((role) => {
+                  const selected = form.role_ids.includes(role.id);
+                  return (
+                    <Pressable
+                      key={role.id}
+                      style={[styles.chip, selected && styles.chipOn]}
+                      onPress={() => toggleRole(role.id)}>
+                      <Text style={[styles.chipText, selected && styles.chipTextOn]}>
+                        {formatRoleName(role.name)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
 
               <Text style={styles.group}>Assign dealers</Text>
@@ -350,7 +369,7 @@ export default function AdminCreateUserScreen() {
             </>
           )}
         </KeyboardSafeScrollView>
-      </View>
+      </SafeScreen>
     </RequireModuleAccess>
   );
 }
@@ -378,8 +397,7 @@ function CheckRow({
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { padding: Spacing.md, gap: Spacing.md, paddingBottom: Spacing.xl },
+  body: { padding: Spacing.md, gap: Spacing.md },
   step: { color: Colors.brand, fontWeight: '700', fontSize: 13 },
   group: { color: Colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
@@ -391,9 +409,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: Colors.background,
   },
-  chipOn: { backgroundColor: Colors.brand, borderColor: Colors.brand },
+  chipOn: { backgroundColor: Colors.brandSoft, borderColor: Colors.brandSoft },
   chipText: { color: Colors.heading, fontWeight: '600', fontSize: 13 },
-  chipTextOn: { color: '#fff' },
+  chipTextOn: { color: Colors.brandDark },
   card: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md,

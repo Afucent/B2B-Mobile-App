@@ -47,7 +47,7 @@ const FIELD_OPS_LINKS: AdminNavLink[] = [
   {
     title: 'Field ops settings',
     href: '/(admin)/field-ops-settings',
-    module: 'organization',
+    module: 'shift_gps_settings',
   },
   {
     title: 'Live tracking',
@@ -57,6 +57,11 @@ const FIELD_OPS_LINKS: AdminNavLink[] = [
   {
     title: 'Organisation profile',
     href: '/(admin)/organization/profile',
+    module: 'organization',
+  },
+  {
+    title: 'Organisation plan',
+    href: '/(admin)/organization/plan',
     module: 'organization',
   },
   {
@@ -85,7 +90,6 @@ const LEAVE_LINKS: AdminNavLink[] = [
   },
   {
     title: 'Attendance',
-    subtitle: 'Clock in / clock out by day',
     href: '/(admin)/attendance',
     module: 'attendance',
   },

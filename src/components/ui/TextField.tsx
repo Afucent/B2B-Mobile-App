@@ -84,14 +84,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   label: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 0.8,
-    color: Colors.heading,
+    letterSpacing: 0.4,
+    color: Colors.muted,
     textTransform: 'uppercase',
   },
   inputWrap: {
-    minHeight: 48,
+    minHeight: 50,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: Radius.md,
@@ -101,7 +101,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   inputError: {
-    borderColor: Colors.dangerBorder,
+    borderColor: Colors.danger,
+    backgroundColor: Colors.dangerBg,
   },
   input: {
     flex: 1,
@@ -116,5 +117,6 @@ const styles = StyleSheet.create({
   error: {
     fontSize: 12,
     color: Colors.danger,
+    fontWeight: '600',
   },
 });

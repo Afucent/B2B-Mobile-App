@@ -102,7 +102,10 @@ const FIELD_LINKS: TabNavLink[] = [
     subtitle: 'Today’s assigned visits — complete with notes & photo',
     href: '/(app)/visits',
     module: 'field_visits',
-    visible: (ctx) => ctx.canView('field_visits') || ctx.canCreate('field_visits'),
+    visible: (ctx) =>
+      ctx.canView('field_visits') ||
+      ctx.canCreate('field_visits') ||
+      ctx.canView('visit_history'),
   },
   {
     title: 'Visit history',
@@ -124,7 +127,7 @@ const FIELD_LINKS: TabNavLink[] = [
     title: 'Field ops settings',
     subtitle: 'Shift windows & GPS tracking',
     href: '/(admin)/field-ops-settings',
-    module: 'organization',
+    module: 'shift_gps_settings',
   },
 ];
 
@@ -175,7 +178,7 @@ export function getVisibleAppTabs(ctx: TabVisibilityContext): AppTabName[] {
     ctx.canView('visit_assign') ||
     ctx.canView('visit_history') ||
     ctx.canView('field_visits') ||
-    ctx.canView('organization');
+    ctx.canView('shift_gps_settings');
 
   if (showClock) tabs.push('clock');
   if (showField) tabs.push('field');

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -16,19 +16,13 @@ import { canViewDashboard } from '@/lib/tabNavigation';
 import { firstName, greetingForNow, initials } from '@/lib/format';
 import { getUnreadNotificationCount } from '@/lib/api/notifications';
 import { isFieldTrackingEnabled } from '@/lib/permissions';
-import { FieldVisit } from '@/lib/api/visits';
-
-function isCompleted(visit: FieldVisit) {
-  return visit.status.toLowerCase() === 'completed';
-}
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, refresh } = useAuth();
   const { showToast } = useToast();
-  const { isOrgAdmin,isEmployee, showMyAttendanceLeave, hasAnyAdminRead, has, canView } = usePermissions();
+  const { isOrgAdmin,isEmployee, showMyAttendanceLeave, hasAnyAdminRead, has, canView, canCreate } = usePermissions();
   const [refreshing, setRefreshing] = useState(false);
-  const [visits, setVisits] = useState<FieldVisit[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [passwordModalDismissed, setPasswordModalDismissed] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
@@ -51,13 +45,12 @@ export default function HomeScreen() {
     timeZone: 'Asia/Kolkata',
   }).format(new Date());
 
-  const canViewVisits = canView('field_visits');
-  const pendingVisits = useMemo(
-    () => visits.filter((visit) => !isCompleted(visit)).sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)),
-    [visits],
-  );
-
-  const nextVisit = pendingVisits[0];
+  // Any role that can load visits via field_visits or visit_history APIs.
+  const canViewVisits =
+    canView('field_visits') ||
+    canCreate('field_visits') ||
+    canView('visit_history') ||
+    showMyAttendanceLeave;
 
 
   useEffect(() => {
@@ -129,7 +122,9 @@ export default function HomeScreen() {
               <Text style={styles.date}>{dateLabel.toUpperCase()}</Text>
               <Text style={styles.greetingTitle}>{greetingForNow()}, {firstName(name)}</Text>
               <Text style={styles.greetingCopy}>
-                {canViewVisits && nextVisit ? 'Your next visit is ready to go.' : 'Your workday is ready to go.'}
+                {canViewVisits
+                  ? 'Your visits and route are ready.'
+                  : 'Your workday is ready to go.'}
               </Text>
             </View>
 

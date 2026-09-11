@@ -13,7 +13,13 @@ export function OutlineButton({ label, onPress, disabled }: Props) {
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => [styles.button, pressed && styles.pressed, disabled && styles.disabled]}>
+      accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled) }}
+      style={({ pressed }) => [
+        styles.button,
+        pressed && !disabled && styles.pressed,
+        disabled && styles.disabled,
+      ]}>
       <Text style={styles.label}>{label}</Text>
     </Pressable>
   );
@@ -21,7 +27,7 @@ export function OutlineButton({ label, onPress, disabled }: Props) {
 
 const styles = StyleSheet.create({
   button: {
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.border,
     borderRadius: Radius.md,
     minHeight: 52,
@@ -30,7 +36,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
     paddingHorizontal: 16,
   },
-  pressed: { backgroundColor: Colors.surface },
-  disabled: { opacity: 0.6 },
-  label: { fontSize: 16, fontWeight: '700', color: Colors.heading },
+  pressed: {
+    backgroundColor: Colors.brandSoft,
+    borderColor: Colors.brand,
+  },
+  disabled: { opacity: 0.55 },
+  label: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.heading,
+    letterSpacing: 0.1,
+  },
 });

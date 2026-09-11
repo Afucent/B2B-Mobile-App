@@ -11,12 +11,16 @@ export interface LeaveTypeAdmin {
   carry_forward?: boolean;
   carry_forward_max?: number | null;
   encashable?: boolean;
+  max_consecutive_days?: number | null;
+  allocation_mode?: string;
   role_ids?: string[];
 }
 
 export interface LeaveRequestAdmin {
   id: string;
+  employee_id?: string;
   employee_name?: string;
+  leave_type_id?: string;
   leave_type_name?: string;
   from_date: string;
   to_date: string;
@@ -24,6 +28,7 @@ export interface LeaveRequestAdmin {
   start_date?: string;
   /** @deprecated use to_date */
   end_date?: string;
+  number_of_days?: number;
   status: string;
   reason?: string | null;
   rejection_reason?: string | null;
@@ -59,14 +64,31 @@ export interface LeaveCalendarResponse {
   summary: CalendarSummary;
 }
 
-export function listLeaveTypesAdmin(status?: string) {
-  const params = new URLSearchParams({ page: '1', page_size: '100' });
-  if (status) params.set('status', status);
-  return apiRequest<{ items: LeaveTypeAdmin[]; total: number }>(`/leave-types?${params.toString()}`);
+export type LeaveTypeListParams = {
+  search?: string;
+  status?: string;
+  page?: number;
+  page_size?: number;
+};
+
+export function listLeaveTypesAdmin(params: LeaveTypeListParams | string = {}) {
+  const opts: LeaveTypeListParams =
+    typeof params === 'string' ? { status: params } : params ?? {};
+  const q = new URLSearchParams({
+    page: String(opts.page ?? 1),
+    page_size: String(opts.page_size ?? 100),
+  });
+  if (opts.status) q.set('status', opts.status);
+  if (opts.search?.trim()) q.set('search', opts.search.trim());
+  return apiRequest<{ items: LeaveTypeAdmin[]; total: number }>(`/leave-types?${q.toString()}`);
 }
 
 export function listActiveLeaveTypes() {
-  return listLeaveTypesAdmin('active').then((res) => res.items);
+  return listLeaveTypesAdmin({ status: 'active' }).then((res) => res.items);
+}
+
+export function getLeaveType(id: string) {
+  return apiRequest<LeaveTypeAdmin>(`/leave-types/${id}`);
 }
 
 export function createLeaveType(data: Record<string, unknown>) {
@@ -77,9 +99,56 @@ export function updateLeaveType(id: string, data: Record<string, unknown>) {
   return apiRequest<LeaveTypeAdmin>(`/leave-types/${id}`, { method: 'PUT', body: data });
 }
 
-export function listLeaveRequestsAdmin(status?: string) {
-  const q = status ? `?status=${encodeURIComponent(status)}` : '';
-  return apiRequest<{ items: LeaveRequestAdmin[]; total: number }>(`/leave-requests${q}`);
+export function updateLeaveTypeStatus(id: string, status: string) {
+  return apiRequest<LeaveTypeAdmin>(`/leave-types/${id}/status`, {
+    method: 'PATCH',
+    body: { status },
+  });
+}
+
+export function deleteLeaveType(id: string) {
+  return apiRequest<{ message: string }>(`/leave-types/${id}`, { method: 'DELETE' });
+}
+
+export type LeaveRequestListParams = {
+  search?: string;
+  status?: string;
+  leave_type_id?: string;
+  employee_id?: string;
+  role_id?: string;
+  city?: string;
+  from_date?: string;
+  to_date?: string;
+  page?: number;
+  page_size?: number;
+};
+
+export function listLeaveRequestsAdmin(params: LeaveRequestListParams | string = {}) {
+  const opts: LeaveRequestListParams =
+    typeof params === 'string' ? { status: params } : params ?? {};
+  const q = new URLSearchParams();
+  if (opts.search?.trim()) q.set('search', opts.search.trim());
+  if (opts.status) q.set('status', opts.status);
+  if (opts.leave_type_id) q.set('leave_type_id', opts.leave_type_id);
+  if (opts.employee_id) q.set('employee_id', opts.employee_id);
+  if (opts.role_id) q.set('role_id', opts.role_id);
+  if (opts.city) q.set('city', opts.city);
+  if (opts.from_date) q.set('from_date', opts.from_date);
+  if (opts.to_date) q.set('to_date', opts.to_date);
+  if (opts.page != null) q.set('page', String(opts.page));
+  if (opts.page_size != null) q.set('page_size', String(opts.page_size));
+  const suffix = q.toString() ? `?${q.toString()}` : '';
+  return apiRequest<{ items: LeaveRequestAdmin[]; total: number }>(`/leave-requests${suffix}`);
+}
+
+export function createLeaveRequest(data: {
+  leave_type_id: string;
+  from_date: string;
+  to_date: string;
+  reason: string;
+  employee_id?: string;
+}) {
+  return apiRequest<LeaveRequestAdmin>('/leave-requests', { method: 'POST', body: data });
 }
 
 export function approveLeaveRequest(id: string) {
@@ -90,6 +159,19 @@ export function rejectLeaveRequest(id: string, rejectionReason: string) {
   return apiRequest<LeaveRequestAdmin>(`/leave-requests/${id}/reject`, {
     method: 'PATCH',
     body: { rejection_reason: rejectionReason },
+  });
+}
+
+export function cancelLeaveRequest(id: string) {
+  return apiRequest<LeaveRequestAdmin>(`/leave-requests/${id}/cancel`, {
+    method: 'PATCH',
+  });
+}
+
+export function extendLeaveRequest(id: string, toDate: string) {
+  return apiRequest<LeaveRequestAdmin>(`/leave-requests/${id}/extend`, {
+    method: 'PATCH',
+    body: { to_date: toDate },
   });
 }
 

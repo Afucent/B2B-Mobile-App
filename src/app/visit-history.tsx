@@ -1,18 +1,21 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import { useCallback, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import RequireModuleAccess from '@/components/RequireModuleAccess';
+import { DateField } from '@/components/ui/DateField';
+import { SafeScreen, useContentBottomInset } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { StatusPill } from '@/components/ui/StatusPill';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { usePermissions } from '@/hooks/usePermissions';
 import { getMyVisitHistory, getVisitHistory, type FieldVisit } from '@/lib/api/visits';
 import { listUsers, type AdminUser } from '@/lib/api/users';
 import { formatClock, formatDate } from '@/lib/format';
-import { ymd } from '@/lib/leaveUi';
+import { parseYmd, ymd } from '@/lib/leaveUi';
 import { resolveMediaUrl } from '@/lib/mediaUrl';
 
 export default function VisitHistoryScreen() {
@@ -51,13 +54,22 @@ function openMap(opts: {
 }
 
 function VisitHistoryContent({ admin }: { admin: boolean }) {
+  const bottomInset = useContentBottomInset();
+  const params = useLocalSearchParams<{ employeeId?: string; employee_id?: string }>();
+  const paramEmployeeId = params.employeeId || params.employee_id || '';
   const [items, setItems] = useState<FieldVisit[]>([]);
   const [employees, setEmployees] = useState<AdminUser[]>([]);
-  const [employeeId, setEmployeeId] = useState('all');
+  const [employeeId, setEmployeeId] = useState(paramEmployeeId || 'all');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useFocusEffect(
+    useCallback(() => {
+      if (paramEmployeeId) setEmployeeId(paramEmployeeId);
+    }, [paramEmployeeId]),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -99,12 +111,12 @@ function VisitHistoryContent({ admin }: { admin: boolean }) {
   );
 
   return (
-    <View style={styles.flex}>
+    <SafeScreen>
       <ScreenHeader title="Visit history" onBack={() => router.back()} />
       <FlatList
         data={items}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={[styles.list, { paddingBottom: bottomInset }]}
         ListHeaderComponent={
           <View style={styles.filters}>
             <Text style={styles.sub}>
@@ -126,14 +138,18 @@ function VisitHistoryContent({ admin }: { admin: boolean }) {
             <View style={styles.dateRow}>
               <Pressable
                 style={styles.dateChip}
-                onPress={() => setFromDate(ymd(new Date(Date.now() - 7 * 86400000)))}>
+                onPress={() => {
+                  setFromDate(ymd(new Date(Date.now() - 7 * 86400000)));
+                  setToDate(ymd(new Date()));
+                }}>
                 <Text style={styles.dateChipText}>Last 7 days</Text>
               </Pressable>
               <Pressable
                 style={styles.dateChip}
-                onPress={() =>
-                  setFromDate(ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1)))
-                }>
+                onPress={() => {
+                  setFromDate(ymd(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+                  setToDate(ymd(new Date()));
+                }}>
                 <Text style={styles.dateChipText}>This month</Text>
               </Pressable>
               <Pressable
@@ -145,18 +161,50 @@ function VisitHistoryContent({ admin }: { admin: boolean }) {
                 <Text style={styles.dateChipText}>All</Text>
               </Pressable>
             </View>
+            <View style={styles.dateFields}>
+              <View style={{ flex: 1 }}>
+                <DateField
+                  label="From"
+                  value={fromDate || ymd(new Date(Date.now() - 30 * 86400000))}
+                  onChange={(v) => {
+                    setFromDate(v);
+                    if (toDate && v > toDate) setToDate(v);
+                  }}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <DateField
+                  label="To"
+                  value={toDate || ymd(new Date())}
+                  onChange={setToDate}
+                  minimumDate={fromDate ? parseYmd(fromDate) : undefined}
+                />
+              </View>
+            </View>
             {loading ? <Text style={styles.meta}>Loading…</Text> : null}
             {error ? <Text style={styles.error}>{error}</Text> : null}
           </View>
         }
-        ListEmptyComponent={!loading ? <Text style={styles.meta}>No completed visits found.</Text> : null}
+        ListEmptyComponent={
+          !loading ? (
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyTitle}>No completed visits</Text>
+              <Text style={styles.emptyCopy}>
+                Try another employee or date range, or check back after visits are finished.
+              </Text>
+            </View>
+          ) : null
+        }
         renderItem={({ item }) => {
           const checkInCoords = coordsLabel(item.reached_latitude, item.reached_longitude);
           const checkOutCoords = coordsLabel(item.check_in_latitude, item.check_in_longitude);
           const checkOutAt = item.completed_at ?? item.scheduled_at;
           return (
             <View style={styles.row}>
-              <Text style={styles.name}>{item.dealer_name ?? 'Dealer'}</Text>
+              <View style={styles.rowHead}>
+                <Text style={styles.name}>{item.dealer_name ?? 'Dealer'}</Text>
+                <StatusPill label="Completed" tone="success" />
+              </View>
               {admin ? <Text style={styles.emp}>{item.employee_name}</Text> : null}
               {item.dealer_address ? (
                 <Text style={styles.addr} numberOfLines={2}>
@@ -232,7 +280,11 @@ function VisitHistoryContent({ admin }: { admin: boolean }) {
               </View>
 
               {item.unplanned ? (
-                <Text style={styles.tag}>Unplanned · {item.unplanned_reason}</Text>
+                <StatusPill
+                  label={`Unplanned · ${item.unplanned_reason ?? ''}`.trim()}
+                  tone="pending"
+                  style={{ marginTop: 6 }}
+                />
               ) : null}
 
               <Text style={styles.notesLabel}>Notes</Text>
@@ -247,7 +299,7 @@ function VisitHistoryContent({ admin }: { admin: boolean }) {
           );
         }}
       />
-    </View>
+    </SafeScreen>
   );
 }
 
@@ -295,8 +347,7 @@ function ScrollChips({
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: Colors.surface },
-  list: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: 40 },
+  list: { padding: Spacing.md, gap: Spacing.sm },
   filters: { gap: Spacing.sm, marginBottom: Spacing.sm },
   sub: { color: Colors.muted, lineHeight: 20 },
   filterLabel: {
@@ -306,10 +357,11 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   dateRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  dateFields: { flexDirection: 'row', gap: 8 },
   dateChip: {
     borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     backgroundColor: Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
@@ -323,29 +375,39 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  chipActive: { backgroundColor: Colors.brand, borderColor: Colors.brand },
+  chipActive: { backgroundColor: Colors.brandSoft, borderColor: Colors.brandSoft },
   chipText: { fontSize: 12, fontWeight: '600', color: Colors.muted },
-  chipTextActive: { color: '#fff' },
+  chipTextActive: { color: Colors.brandDark },
   meta: { color: Colors.muted },
   error: { color: Colors.danger },
+  emptyWrap: { paddingVertical: Spacing.xl, paddingHorizontal: Spacing.md, alignItems: 'center', gap: 6 },
+  emptyTitle: { color: Colors.heading, fontWeight: '700', fontSize: 15, textAlign: 'center' },
+  emptyCopy: { color: Colors.muted, fontSize: 13, lineHeight: 18, textAlign: 'center' },
   row: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md,
-    padding: Spacing.md,
-    gap: 4,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    gap: 6,
     marginBottom: Spacing.sm,
     borderLeftWidth: 3,
     borderLeftColor: Colors.brand,
   },
-  name: { fontWeight: '800', color: Colors.heading, fontSize: 15 },
-  emp: { color: Colors.brand, fontWeight: '700' },
-  addr: { color: Colors.muted, fontSize: 12 },
+  rowHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  name: { fontWeight: '800', color: Colors.heading, fontSize: 16, flex: 1 },
+  emp: { color: Colors.brandDark, fontWeight: '700', fontSize: 13 },
+  addr: { color: Colors.muted, fontSize: 13, lineHeight: 18 },
   detailBlock: {
     marginTop: 8,
     gap: 4,
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
-    padding: 10,
+    padding: 12,
   },
   blockHead: {
     flexDirection: 'row',
@@ -369,7 +431,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     textAlign: 'right',
   },
-  tag: { color: Colors.pendingText, fontSize: 11, fontWeight: '700', marginTop: 6 },
   notesLabel: {
     marginTop: 8,
     fontSize: 11,
@@ -377,7 +438,7 @@ const styles = StyleSheet.create({
     color: Colors.muted,
     textTransform: 'uppercase',
   },
-  notes: { color: Colors.text, fontSize: 13 },
+  notes: { color: Colors.text, fontSize: 13, lineHeight: 18 },
   photo: {
     width: '100%',
     height: 140,

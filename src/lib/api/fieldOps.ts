@@ -105,7 +105,10 @@ export type EmployeeLiveDetail = {
   employee_name?: string;
   employee_initials?: string;
   avatar_url?: string | null;
+  role?: string | null;
   designation?: string | null;
+  region_label?: string | null;
+  employee_code?: string | null;
   status?: string | null;
   status_label?: string | null;
   latitude?: number | null;
@@ -114,6 +117,18 @@ export type EmployeeLiveDetail = {
   last_ping_at?: string | null;
   last_ping_label?: string | null;
   clock_in_time?: string | null;
+  late_minutes?: number | null;
+  working_duration_label?: string | null;
+  distance_today_km?: number | null;
+  visits_completed?: number | null;
+  visits_assigned?: number | null;
+  battery_percent?: number | null;
+  visits?: Array<{
+    id: string;
+    dealer_name?: string | null;
+    status?: string;
+    scheduled_at?: string | null;
+  }>;
   attendance_record_id?: string | null;
   gps_status?: string | null;
 };

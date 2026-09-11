@@ -3,18 +3,40 @@ import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { DateField } from '@/components/ui/DateField';
 import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { OutlineButton } from '@/components/ui/OutlineButton';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { SafeScreen, useContentBottomInset } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
-import { Colors, Radius } from '@/constants/theme';
-import { applyLeave, getLeaveTypes, type LeaveType } from '@/lib/api/leave';
-import { inclusiveDays, parseYmd, ymd } from '@/lib/leaveUi';
+import { Colors, Radius, Spacing } from '@/constants/theme';
+import {
+  createLeaveRequest,
+  getLeaveBalance,
+  getLeaveWorkingDays,
+  getMyLeaveRequests,
+  listLeaveTypesForMe,
+  type LeaveBalance,
+  type LeaveRequest,
+  type LeaveType,
+} from '@/lib/api/leave';
+import {
+  DEFAULT_WORKING_DAYS,
+  computeWorkingDaysBetween,
+  dateInLeaveRanges,
+  isWorkingDayIso,
+  parseYmd,
+  ymd,
+} from '@/lib/leaveUi';
 
 export default function ApplyLeaveScreen() {
+  const bottomInset = useContentBottomInset();
   const today = ymd(new Date());
   const [types, setTypes] = useState<LeaveType[]>([]);
+  const [balances, setBalances] = useState<LeaveBalance[]>([]);
+  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [workingDays, setWorkingDays] = useState<string[]>([...DEFAULT_WORKING_DAYS]);
   const [typeId, setTypeId] = useState('');
   const [open, setOpen] = useState(false);
   const [fromDate, setFromDate] = useState(today);
@@ -23,21 +45,66 @@ export default function ApplyLeaveScreen() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    void getLeaveTypes()
-      .then((items) => {
-        const active = items.filter((item) => item.is_active);
-        setTypes(active);
-        if (active[0]) setTypeId(active[0].id);
-      })
-      .catch(() => setTypes([]));
+    void Promise.all([
+      listLeaveTypesForMe()
+        .then((items) => {
+          const active = items.filter(
+            (item) => item.is_active ?? (item.status === 'active' || item.status == null),
+          );
+          setTypes(active);
+          if (active[0]) setTypeId(active[0].id);
+        })
+        .catch(() => setTypes([])),
+      getLeaveBalance()
+        .then((res) => setBalances(res.items ?? []))
+        .catch(() => setBalances([])),
+      getMyLeaveRequests()
+        .then((rows) => setRequests(Array.isArray(rows) ? rows : []))
+        .catch(() => setRequests([])),
+      getLeaveWorkingDays()
+        .then((res) =>
+          setWorkingDays(
+            res.working_days?.length ? res.working_days : [...DEFAULT_WORKING_DAYS],
+          ),
+        )
+        .catch(() => setWorkingDays([...DEFAULT_WORKING_DAYS])),
+    ]);
   }, []);
 
   const selected = types.find((item) => item.id === typeId);
-  const days = useMemo(() => inclusiveDays(fromDate, toDate), [fromDate, toDate]);
+  const selectedBalance = balances.find((b) => b.leave_type_id === typeId);
+  const blockedRanges = useMemo(
+    () =>
+      requests
+        .filter((row) => row.status === 'pending' || row.status === 'approved')
+        .map((row) => ({ from_date: row.from_date, to_date: row.to_date })),
+    [requests],
+  );
+  const requestedDays = useMemo(
+    () => (fromDate && toDate ? computeWorkingDaysBetween(fromDate, toDate, workingDays) : 0),
+    [fromDate, toDate, workingDays],
+  );
+  const isLimited = selectedBalance?.allocation_mode !== 'unlimited';
+  const balanceExceeded =
+    Boolean(selectedBalance) && isLimited && requestedDays > selectedBalance!.balance;
+  const maxConsecutive = selected?.max_consecutive_days ?? null;
 
   function setFrom(value: string) {
     setFromDate(value);
     if (parseYmd(value) > parseYmd(toDate)) setToDate(value);
+  }
+
+  function rangeOverlapsBlocked(from: string, to: string) {
+    const start = parseYmd(from);
+    const end = parseYmd(to);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return true;
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      const iso = ymd(cursor);
+      if (dateInLeaveRanges(iso, blockedRanges)) return true;
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return false;
   }
 
   async function onSubmit() {
@@ -49,9 +116,40 @@ export default function ApplyLeaveScreen() {
       Alert.alert('Leave', 'Enter a brief reason for leave.');
       return;
     }
+    if (fromDate < today) {
+      Alert.alert('Leave', 'Past dates cannot be selected for leave.');
+      return;
+    }
+    if (requestedDays <= 0) {
+      Alert.alert('Leave', 'Select a range that includes at least one working day.');
+      return;
+    }
+    if (!isWorkingDayIso(fromDate, workingDays) || !isWorkingDayIso(toDate, workingDays)) {
+      Alert.alert('Leave', 'From and to dates must fall on working days.');
+      return;
+    }
+    if (rangeOverlapsBlocked(fromDate, toDate)) {
+      Alert.alert('Leave', 'Selected dates overlap an existing pending or approved request.');
+      return;
+    }
+    if (maxConsecutive != null && requestedDays > maxConsecutive) {
+      Alert.alert(
+        'Leave',
+        `This leave type allows at most ${maxConsecutive} consecutive working day(s).`,
+      );
+      return;
+    }
+    if (balanceExceeded) {
+      Alert.alert(
+        'Leave',
+        `You can apply for only ${selectedBalance?.balance ?? 0} more day(s) of this leave type.`,
+      );
+      return;
+    }
+
     setLoading(true);
     try {
-      const created = await applyLeave({
+      const created = await createLeaveRequest({
         leave_type_id: typeId,
         from_date: fromDate,
         to_date: toDate,
@@ -77,69 +175,86 @@ export default function ApplyLeaveScreen() {
   }
 
   return (
-    <View style={styles.flex}>
-      <ScreenHeader title="Apply Leave" onBack={() => router.back()} />
-      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
-        <Text style={styles.label}>Leave Type</Text>
-        <Pressable style={styles.select} onPress={() => setOpen((v) => !v)}>
-          <Text style={styles.selectText}>{selected?.name || 'Select leave type'}</Text>
-          <Ionicons name="chevron-down" size={18} color={Colors.muted} />
-        </Pressable>
-        {open
-          ? types.map((item) => (
-              <Pressable
-                key={item.id}
-                style={styles.option}
-                onPress={() => {
-                  setTypeId(item.id);
-                  setOpen(false);
-                }}>
-                <Text style={styles.optionText}>{item.name}</Text>
-              </Pressable>
-            ))
-          : null}
+    <RequireModuleAccess module="my_attendance_leave" allowCreate>
+      <SafeScreen>
+        <ScreenHeader title="Apply Leave" onBack={() => router.back()} />
+        <KeyboardSafeScrollView contentContainerStyle={[styles.body, { paddingBottom: bottomInset }]}>
+          <Text style={styles.label}>Leave Type</Text>
+          <Pressable style={styles.select} onPress={() => setOpen((v) => !v)}>
+            <Text style={styles.selectText}>{selected?.name || 'Select leave type'}</Text>
+            <Ionicons name="chevron-down" size={18} color={Colors.muted} />
+          </Pressable>
+          {open
+            ? types.map((item) => (
+                <Pressable
+                  key={item.id}
+                  style={styles.option}
+                  onPress={() => {
+                    setTypeId(item.id);
+                    setOpen(false);
+                  }}>
+                  <Text style={styles.optionText}>{item.name}</Text>
+                </Pressable>
+              ))
+            : null}
+          {open && types.length === 0 ? (
+            <Text style={styles.empty}>No leave types are available yet.</Text>
+          ) : null}
 
-        <DateField label="From Date" value={fromDate} onChange={setFrom} />
-        <DateField
-          label="To Date"
-          value={toDate}
-          onChange={setToDate}
-          minimumDate={parseYmd(fromDate)}
-        />
+          {selectedBalance ? (
+            <Text style={styles.balance}>
+              Remaining balance: {selectedBalance.balance} day(s)
+            </Text>
+          ) : null}
 
-        <View style={styles.duration}>
-          <Text style={styles.label}>Duration</Text>
-          <Text style={styles.days}>
-            {days} day{days === 1 ? '' : 's'}
-          </Text>
-        </View>
+          <DateField
+            label="From Date"
+            value={fromDate}
+            onChange={setFrom}
+            minimumDate={parseYmd(today)}
+          />
+          <DateField
+            label="To Date"
+            value={toDate}
+            onChange={setToDate}
+            minimumDate={parseYmd(fromDate)}
+          />
 
-        <Text style={styles.label}>Reason</Text>
-        <TextInput
-          value={reason}
-          onChangeText={setReason}
-          placeholder="Brief reason for leave..."
-          placeholderTextColor={Colors.muted}
-          multiline
-          style={styles.area}
-        />
+          <View style={styles.duration}>
+            <Text style={styles.label}>Duration</Text>
+            <Text style={styles.days}>
+              Selected: {requestedDays} working day{requestedDays === 1 ? '' : 's'}
+            </Text>
+          </View>
 
-        <View style={styles.info}>
-          <Ionicons name="information-circle" size={18} color={Colors.infoText} />
-          <Text style={styles.infoText}>Your manager will be notified once submitted.</Text>
-        </View>
+          <Text style={styles.label}>Reason</Text>
+          <TextInput
+            value={reason}
+            onChangeText={setReason}
+            placeholder="Brief reason for leave..."
+            placeholderTextColor={Colors.muted}
+            multiline
+            style={styles.area}
+          />
 
-        <PrimaryButton label="Apply Leave" loading={loading} onPress={() => void onSubmit()} />
-        <OutlineButton label="Cancel" onPress={() => router.back()} />
-      </KeyboardSafeScrollView>
-    </View>
+          <View style={styles.info}>
+            <Ionicons name="information-circle" size={18} color={Colors.infoText} />
+            <Text style={styles.infoText}>Your manager will be notified once submitted.</Text>
+          </View>
+
+          <PrimaryButton label="Apply Leave" loading={loading} onPress={() => void onSubmit()} />
+          <OutlineButton label="Cancel" onPress={() => router.back()} />
+        </KeyboardSafeScrollView>
+      </SafeScreen>
+    </RequireModuleAccess>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { padding: 16, gap: 10, paddingBottom: 40 },
+  body: { padding: Spacing.md, gap: 12 },
   label: { fontSize: 13, fontWeight: '600', color: Colors.heading },
+  balance: { fontSize: 13, fontWeight: '600', color: Colors.muted },
+  empty: { fontSize: 13, color: Colors.muted, paddingVertical: 4 },
   select: {
     minHeight: 48,
     borderWidth: 1,
@@ -173,8 +288,8 @@ const styles = StyleSheet.create({
   },
   info: {
     backgroundColor: Colors.infoBg,
-    borderRadius: Radius.md,
-    padding: 12,
+    borderRadius: Radius.lg,
+    padding: 14,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,

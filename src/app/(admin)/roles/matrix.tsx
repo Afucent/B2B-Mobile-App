@@ -126,6 +126,16 @@ function toggleColumn(
     if (checked) next.add(id);
     else next.delete(id);
   }
+  // Unchecking View clears the whole row (matches web).
+  if (column === 'view' && !checked) {
+    for (const col of ['create', 'edit', 'delete'] as MatrixColumn[]) {
+      for (const id of idsForColumn(row, col)) next.delete(id);
+    }
+  }
+  // Checking a write action also grants View.
+  if (column !== 'view' && checked && row.view) {
+    next.add(row.view.id);
+  }
   return next;
 }
 

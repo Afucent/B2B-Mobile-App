@@ -74,5 +74,5 @@ export function usePermissions() {
       hasAnyAdminRead,
       showMyAttendanceLeave,
     };
-  }, [permissions, orgAdmin]);
+  }, [permissions, orgAdmin, employee]);
 }

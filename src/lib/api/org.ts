@@ -26,3 +26,10 @@ export function updateFieldOperationsSettings(data: Partial<FieldOperationsSetti
     body: data,
   });
 }
+
+export function resetFieldOperationsSettings() {
+  return apiRequest<FieldOperationsSettings>(
+    '/tenant/organization/settings/field-operations/reset',
+    { method: 'POST' },
+  );
+}

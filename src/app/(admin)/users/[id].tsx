@@ -8,7 +8,9 @@ import { OutlineButton } from '@/components/ui/OutlineButton';
 import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
+import { SafeScreen } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { StatusPill, statusTone } from '@/components/ui/StatusPill';
 import { TextField } from '@/components/ui/TextField';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -64,11 +66,12 @@ export default function AdminUserDetailScreen() {
     access_surface: 'both' as 'web' | 'mobile' | 'both',
     status: '' as '' | 'active' | 'inactive',
   });
-  const [roleId, setRoleId] = useState('');
+  const [roleIds, setRoleIds] = useState<string[]>([]);
   const [passwordForm, setPasswordForm] = useState({
     new_password: '',
     confirm_password: '',
     force_change_password: true,
+    send_welcome_email: false,
   });
 
   const fillFromUser = useCallback((userData: AdminUser) => {
@@ -96,7 +99,7 @@ export default function AdminUserDetailScreen() {
             ? 'inactive'
             : 'active',
     });
-    setRoleId(userData.roles?.[0]?.id ?? '');
+    setRoleIds(userData.roles?.map((r) => r.id) ?? []);
   }, []);
 
   const load = useCallback(async () => {
@@ -121,17 +124,24 @@ export default function AdminUserDetailScreen() {
     }, [load]),
   );
 
-  const currentRoleName = user?.roles?.[0]?.name ?? '';
-  const isOrgAdminUser = normalizeRoleKey(currentRoleName) === 'organization_admin';
+  const isOrgAdminUser = (user?.roles ?? []).some(
+    (r) => normalizeRoleKey(r.name) === 'organization_admin',
+  );
   const isDealerRole =
-    isDealerRoleName(roles.find((r) => r.id === roleId)?.name ?? '') ||
-    isDealerRoleName(currentRoleName);
+    roleIds.some((id) => isDealerRoleName(roles.find((r) => r.id === id)?.name ?? '')) ||
+    (user?.roles ?? []).some((r) => isDealerRoleName(r.name));
   const isPending = user?.status === 'pending_activation';
   const canUpdateStatus = has('users', 'status_update');
   const canAssignRole = has('users', 'role_assign');
 
   function update<K extends keyof typeof form>(field: K, value: (typeof form)[K]) {
     setForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function toggleRole(roleId: string) {
+    setRoleIds((prev) =>
+      prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId],
+    );
   }
 
   async function saveProfile() {
@@ -187,7 +197,12 @@ export default function AdminUserDetailScreen() {
     setError('');
     try {
       setUser(await setUserPassword(user.id, passwordForm));
-      setPasswordForm({ new_password: '', confirm_password: '', force_change_password: true });
+      setPasswordForm({
+        new_password: '',
+        confirm_password: '',
+        force_change_password: true,
+        send_welcome_email: false,
+      });
       setMessage('Password updated.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Password update failed');
@@ -197,14 +212,14 @@ export default function AdminUserDetailScreen() {
   }
 
   async function saveRole() {
-    if (!user || !canAssignRole || !roleId) return;
+    if (!user || !canAssignRole || roleIds.length === 0) return;
     setBusy(true);
     setError('');
     try {
-      const updated = await updateUserRole(user.id, roleId);
+      const updated = await updateUserRole(user.id, roleIds);
       setUser(updated);
       fillFromUser(updated);
-      if (isDealerRoleName(updated.roles?.[0]?.name ?? '')) {
+      if ((updated.roles ?? []).some((r) => isDealerRoleName(r.name))) {
         setForm((f) => ({ ...f, dealer_ids: [] }));
       }
       setMessage('Role updated.');
@@ -255,7 +270,7 @@ export default function AdminUserDetailScreen() {
 
   return (
     <RequireModuleAccess module="users" allowCreate>
-      <View style={styles.flex}>
+      <SafeScreen>
         <ScreenHeader title="User" onBack={() => router.back()} />
         <KeyboardSafeScrollView contentContainerStyle={styles.body}>
           {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -267,7 +282,10 @@ export default function AdminUserDetailScreen() {
               <View style={styles.card}>
                 <Text style={styles.title}>{user.name}</Text>
                 <Text style={styles.sub}>{user.personal_email}</Text>
-                <Text style={styles.badge}>{user.status.replace(/_/g, ' ')}</Text>
+                <StatusPill
+                  label={user.status.replace(/_/g, ' ')}
+                  tone={statusTone(user.status === 'pending_activation' ? 'pending' : user.status)}
+                />
                 {!editing && canEdit('users') ? (
                   <OutlineButton label="Edit employee" onPress={() => setEditing(true)} />
                 ) : null}
@@ -464,6 +482,16 @@ export default function AdminUserDetailScreen() {
                       }))
                     }
                   />
+                  <CheckRow
+                    label="Send welcome email"
+                    checked={passwordForm.send_welcome_email}
+                    onPress={() =>
+                      setPasswordForm((p) => ({
+                        ...p,
+                        send_welcome_email: !p.send_welcome_email,
+                      }))
+                    }
+                  />
                   <PrimaryButton
                     label="Set password"
                     onPress={() => void savePassword()}
@@ -476,17 +504,19 @@ export default function AdminUserDetailScreen() {
                 <View style={styles.card}>
                   <Text style={styles.section}>Change role</Text>
                   <View style={styles.chips}>
-                    {roles.map((role) => (
-                      <Pressable
-                        key={role.id}
-                        style={[styles.chip, roleId === role.id && styles.chipOn]}
-                        onPress={() => setRoleId(role.id)}>
-                        <Text
-                          style={[styles.chipText, roleId === role.id && styles.chipTextOn]}>
-                          {formatRoleName(role.name)}
-                        </Text>
-                      </Pressable>
-                    ))}
+                    {roles.map((role) => {
+                      const selected = roleIds.includes(role.id);
+                      return (
+                        <Pressable
+                          key={role.id}
+                          style={[styles.chip, selected && styles.chipOn]}
+                          onPress={() => toggleRole(role.id)}>
+                          <Text style={[styles.chipText, selected && styles.chipTextOn]}>
+                            {formatRoleName(role.name)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
                   </View>
                   <PrimaryButton
                     label="Update role"
@@ -512,7 +542,7 @@ export default function AdminUserDetailScreen() {
             </>
           ) : null}
         </KeyboardSafeScrollView>
-      </View>
+      </SafeScreen>
     </RequireModuleAccess>
   );
 }
@@ -544,8 +574,7 @@ function CheckRow({
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { padding: Spacing.md, gap: Spacing.md, paddingBottom: Spacing.xl },
+  body: { padding: Spacing.md, gap: Spacing.md },
   meta: { color: Colors.muted },
   error: { color: Colors.danger },
   ok: { color: Colors.brand, fontWeight: '600' },
@@ -556,14 +585,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   title: { fontSize: 20, fontWeight: '800', color: Colors.heading },
-  sub: { color: Colors.muted, marginTop: -8 },
-  badge: {
-    alignSelf: 'flex-start',
-    color: Colors.brand,
-    fontWeight: '700',
-    textTransform: 'capitalize',
-    fontSize: 12,
-  },
+  sub: { color: Colors.muted, marginTop: -8, fontSize: 14, lineHeight: 20 },
   section: { fontWeight: '800', color: Colors.heading, fontSize: 16 },
   group: { color: Colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
@@ -575,9 +597,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     backgroundColor: Colors.surface,
   },
-  chipOn: { backgroundColor: Colors.brand, borderColor: Colors.brand },
+  chipOn: { backgroundColor: Colors.brandSoft, borderColor: Colors.brandSoft },
   chipText: { color: Colors.heading, fontWeight: '600', fontSize: 13 },
-  chipTextOn: { color: '#fff' },
+  chipTextOn: { color: Colors.brandDark },
   field: { gap: 4 },
   label: { color: Colors.muted, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
   value: { color: Colors.heading, fontSize: 16, fontWeight: '600' },

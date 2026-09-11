@@ -6,6 +6,7 @@ export const MODULE_LABELS: Record<string, string> = {
   dashboard: 'Dashboard',
   users: 'Users',
   organization: 'Organisation',
+  shift_gps_settings: 'Shift & GPS Settings',
   role_library: 'Role library',
   permission_matrix: 'Permission matrix',
   geography: 'Geography',
@@ -28,6 +29,7 @@ export const MATRIX_MODULE_ORDER = [
   'dashboard',
   'users',
   'organization',
+  'shift_gps_settings',
   'role_library',
   'permission_matrix',
   'geography',
@@ -59,6 +61,7 @@ export const ADMIN_READ_MODULES = [
   'dashboard',
   'users',
   'organization',
+  'shift_gps_settings',
   'role_library',
   'permission_matrix',
   'geography',
@@ -85,6 +88,13 @@ export const FIELD_TRACKING_MODULE_KEYS = [
 ] as const;
 
 export const PERMISSION_EQUIVALENTS: Record<string, Array<[string, string]>> = {
+  'shift_gps_settings:read': [['shift_gps_settings', 'read']],
+  'shift_gps_settings:create': [['shift_gps_settings', 'create']],
+  'shift_gps_settings:update': [
+    ['shift_gps_settings', 'update'],
+    ['shift_gps_settings', 'write'],
+  ],
+  'shift_gps_settings:delete': [['shift_gps_settings', 'delete']],
   'leave_types:read': [
     ['leave_types', 'read'],
     ['leave', 'read'],
@@ -235,6 +245,11 @@ export const PERMISSION_EQUIVALENTS: Record<string, Array<[string, string]>> = {
     ['leave_types', 'update'],
     ['leave_types', 'delete'],
   ],
+  'field_visits:read': [
+    ['field_visits', 'read'],
+    ['field_visits', 'create'],
+  ],
+  'field_visits:create': [['field_visits', 'create']],
 };
 
 function hasExact(
@@ -244,7 +259,10 @@ function hasExact(
   scope = 'tenant',
 ): boolean {
   return permissions.some(
-    (p) => p.module === module && p.action === action && p.scope === scope,
+    (p) =>
+      p.module === module &&
+      p.action === action &&
+      (!p.scope || p.scope === scope),
   );
 }
 

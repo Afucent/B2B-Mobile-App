@@ -68,3 +68,56 @@ export function updateOrgPrivacy(data: Record<string, unknown>) {
     body: data,
   });
 }
+
+export function requestPlanUpgrade() {
+  return apiRequest<{ message: string }>('/tenant/organization/plan/upgrade-request', {
+    method: 'POST',
+  });
+}
+
+export interface OfficeLocation {
+  id: string;
+  name: string;
+  address: string;
+  radius_m: number;
+  status: string;
+}
+
+export interface GeofenceSettings {
+  default_geofence_radius_m: number;
+  enforce_geofence: boolean;
+  bypass_approval_required: boolean;
+  multiple_locations_enabled: boolean;
+  tracking_interval_minutes: number;
+  track_only_working_hours: boolean;
+  locations: OfficeLocation[];
+}
+
+export function getGeofenceSettings() {
+  return apiRequest<GeofenceSettings>('/tenant/organization/settings/geofence');
+}
+
+export function updateGeofenceSettings(data: Partial<Omit<GeofenceSettings, 'locations'>>) {
+  return apiRequest<GeofenceSettings>('/tenant/organization/settings/geofence', {
+    method: 'PATCH',
+    body: data,
+  });
+}
+
+export function resetGeofenceSettings() {
+  return apiRequest<GeofenceSettings>('/tenant/organization/settings/geofence/reset', {
+    method: 'POST',
+  });
+}
+
+export function createOfficeLocation(data: {
+  name: string;
+  address: string;
+  radius_m?: number;
+  status?: string;
+}) {
+  return apiRequest<OfficeLocation>('/tenant/organization/settings/locations', {
+    method: 'POST',
+    body: data,
+  });
+}

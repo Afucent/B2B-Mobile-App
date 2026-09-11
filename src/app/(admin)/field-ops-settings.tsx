@@ -5,14 +5,17 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 
+import { OutlineButton } from '@/components/ui/OutlineButton';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
+import { SafeScreen, useContentBottomInset } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { TextField } from '@/components/ui/TextField';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
   getFieldOperationsSettings,
+  resetFieldOperationsSettings,
   updateFieldOperationsSettings,
   type FieldOperationsSettings,
 } from '@/lib/api/org';
@@ -39,18 +42,24 @@ function numField(
 }
 
 export default function FieldOpsSettingsScreen() {
-  const { canEdit } = usePermissions();
-  const editable = canEdit('organization');
+  const bottomInset = useContentBottomInset();
+  const { canEdit, canDelete } = usePermissions();
+  const editable = canEdit('shift_gps_settings');
+  const canReset = canDelete('shift_gps_settings');
   const [form, setForm] = useState<Partial<FieldOperationsSettings>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  const load = useCallback(() => {
+    void getFieldOperationsSettings()
+      .then(setForm)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'));
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
-      void getFieldOperationsSettings()
-        .then(setForm)
-        .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'));
-    }, []),
+      load();
+    }, [load]),
   );
 
   function patch(next: Partial<FieldOperationsSettings>) {
@@ -91,11 +100,36 @@ export default function FieldOpsSettingsScreen() {
     }
   }
 
+  function confirmReset() {
+    if (!canReset) return;
+    Alert.alert('Reset to defaults', 'Restore field ops settings to organisation defaults?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reset',
+        style: 'destructive',
+        onPress: () => void doReset(),
+      },
+    ]);
+  }
+
+  async function doReset() {
+    setBusy(true);
+    setError('');
+    try {
+      setForm(await resetFieldOperationsSettings());
+      Alert.alert('Reset', 'Field ops settings restored to defaults.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Reset failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <RequireModuleAccess module="organization">
-      <View style={styles.flex}>
+    <RequireModuleAccess module="shift_gps_settings">
+      <SafeScreen>
         <ScreenHeader title="Field ops settings" onBack={() => router.back()} />
-        <KeyboardSafeScrollView contentContainerStyle={styles.body}>
+        <KeyboardSafeScrollView contentContainerStyle={[styles.body, { paddingBottom: bottomInset }]}>
           <Text style={styles.sectionTitle}>Shift configuration</Text>
           <TextField
             label="Shift start (HH:MM)"
@@ -191,31 +225,33 @@ export default function FieldOpsSettingsScreen() {
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
           {editable ? <PrimaryButton label="Save" onPress={() => void save()} loading={busy} /> : null}
+          {canReset ? (
+            <OutlineButton label="Reset to defaults" onPress={confirmReset} disabled={busy} />
+          ) : null}
         </KeyboardSafeScrollView>
-      </View>
+      </SafeScreen>
     </RequireModuleAccess>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { padding: Spacing.md, gap: Spacing.md, paddingBottom: Spacing.xl },
+  body: { padding: Spacing.md, gap: Spacing.md },
   sectionTitle: { fontWeight: '800', color: Colors.heading, fontSize: 15, marginTop: 4 },
   card: {
     backgroundColor: Colors.background,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
     gap: 8,
   },
-  cardLabel: { fontWeight: '800', color: Colors.heading },
-  hint: { color: Colors.muted, fontSize: 12, marginTop: 2 },
+  cardLabel: { fontWeight: '800', color: Colors.heading, fontSize: 16 },
+  hint: { color: Colors.muted, fontSize: 13, marginTop: 2, lineHeight: 18 },
   days: { gap: 4 },
   dayRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   dayLabel: { color: Colors.heading, fontWeight: '600' },
   switchRow: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md,
-    padding: Spacing.md,
+    padding: Spacing.md + 2,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

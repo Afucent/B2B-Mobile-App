@@ -17,9 +17,10 @@ export function emptyLeaveTypeForm(): LeaveTypeFormValues {
 }
 
 export function toLeaveTypePayload(values: LeaveTypeFormValues) {
+  const code = values.code.trim().toUpperCase();
   return {
     name: values.name.trim(),
-    code: values.code.trim().toUpperCase(),
+    ...(code ? { code } : {}),
     category: 'annual',
     allocation_mode: 'fixed',
     annual_days: Number(values.annualDays),
@@ -35,8 +36,23 @@ export function toLeaveTypePayload(values: LeaveTypeFormValues) {
 export function validateLeaveTypeForm(values: LeaveTypeFormValues): Record<string, string> {
   const errors: Record<string, string> = {};
   if (!values.name.trim()) errors.name = 'Name is required.';
-  if (!values.code.trim()) errors.code = 'Code is required.';
   if (!values.annualDays.trim()) errors.annualDays = 'Annual days is required.';
   if (!values.status.trim()) errors.status = 'Status is required.';
   return errors;
+}
+
+export function leaveTypeToForm(item: {
+  name?: string;
+  code?: string | null;
+  annual_days?: number | null;
+  status?: string;
+  role_ids?: string[];
+}): LeaveTypeFormValues {
+  return {
+    name: item.name ?? '',
+    code: item.code ?? '',
+    annualDays: item.annual_days != null ? String(item.annual_days) : '',
+    status: item.status === 'inactive' ? 'inactive' : 'active',
+    roleIds: item.role_ids ?? [],
+  };
 }

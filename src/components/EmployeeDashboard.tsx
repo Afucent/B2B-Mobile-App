@@ -9,8 +9,9 @@ import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { getTodayStatus, type TodayStatus } from '@/lib/api/attendance';
-import { getMyVisits, type FieldVisit } from '@/lib/api/visits';
+import { getMyVisits, getVisitHistory, type FieldVisit } from '@/lib/api/visits';
 import { durationLabel, firstName, formatClock, greetingForNow, initials } from '@/lib/format';
+import { ymd } from '@/lib/leaveUi';
 
 type Props = {
   refreshKey?: number;
@@ -36,7 +37,7 @@ function currentHours(status: TodayStatus | null) {
 
 export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
   const { user } = useAuth();
-  const { has, canView, showMyAttendanceLeave } = usePermissions();
+  const { has, canView, canCreate, showMyAttendanceLeave } = usePermissions();
   const [today, setToday] = useState<TodayStatus | null>(null);
   const [visits, setVisits] = useState<FieldVisit[]>([]);
   const [visitsTotal, setVisitsTotal] = useState(0);
@@ -47,20 +48,51 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
     has('attendance', 'create') ||
     has('attendance', 'clock') ||
     has('my_attendance_leave', 'create');
-  const canViewVisits = canView('field_visits');
+  // Employee roles often have visit_history / attendance but not field_visits.
+  const canUseMyVisitsApi = canView('field_visits') || canCreate('field_visits');
+  const canUseHistoryApi = canView('visit_history');
+  const canViewVisits =
+    canUseMyVisitsApi || canUseHistoryApi || showMyAttendanceLeave;
 
   const load = useCallback(async () => {
     setLoading(true);
+
+    async function fetchVisits(): Promise<{ items: FieldVisit[]; total: number } | null> {
+      if (canUseMyVisitsApi) {
+        return getMyVisits();
+      }
+      if (canUseHistoryApi && user?.id) {
+        const day = ymd(new Date());
+        return getVisitHistory({
+          employee_id: user.id,
+          from_date: day,
+          to_date: day,
+          limit: 50,
+        });
+      }
+      if (showMyAttendanceLeave) {
+        return getMyVisits();
+      }
+      return null;
+    }
+
     const [attendance, visitResponse] = await Promise.all([
       canUseClock ? getTodayStatus().catch(() => null) : Promise.resolve(null),
-      canViewVisits ? getMyVisits().catch(() => null) : Promise.resolve(null),
+      canViewVisits ? fetchVisits().catch(() => null) : Promise.resolve(null),
     ]);
 
     setToday(attendance);
     setVisits(visitResponse?.items ?? []);
     setVisitsTotal(visitResponse?.total ?? 0);
     setLoading(false);
-  }, [canUseClock, canViewVisits]);
+  }, [
+    canUseClock,
+    canViewVisits,
+    canUseMyVisitsApi,
+    canUseHistoryApi,
+    showMyAttendanceLeave,
+    user?.id,
+  ]);
 
   useFocusEffect(
     useCallback(() => {
@@ -149,7 +181,20 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
           ) : pendingVisits.length ? (
             <View style={styles.visitList}>
               {pendingVisits.slice(0, 2).map((visit, index) => (
-                <Pressable key={visit.id} style={[styles.visitRow, index === 0 && styles.nextVisit]} onPress={() => router.push('/(app)/field')}>
+                <Pressable
+                  key={visit.id}
+                  style={[styles.visitRow, index === 0 && styles.nextVisit]}
+                  onPress={() =>
+                    router.push({
+                      pathname: '/visit-detail',
+                      params: {
+                        visitId: visit.id,
+                        dealerName: visit.dealer_name ?? 'Dealer',
+                        checkedIn: visit.reached_at ? '1' : '0',
+                        reachedAt: visit.reached_at ?? '',
+                      },
+                    })
+                  }>
                   <View style={[styles.visitIcon, index === 0 && styles.visitIconActive]}>
                     <Ionicons name="location-outline" size={20} color={index === 0 ? '#FFFFFF' : Colors.brandDark} />
                   </View>

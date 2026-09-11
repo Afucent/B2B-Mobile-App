@@ -217,7 +217,7 @@ function TeamCalendarContent() {
           </Pressable>
         </View>
 
-        {canViewAll ? (
+       
           <View style={styles.filtersCard}>
             <View style={styles.filtersHeading}>
               <Ionicons name="options-outline" size={16} color={Colors.brand} />
@@ -236,7 +236,6 @@ function TeamCalendarContent() {
               options={[{ id: 'all', name: 'All employees' }, ...usersForRole.map((employee) => ({ id: employee.id, name: employee.name }))]}
             />
           </View>
-        ) : null}
 
         {data ? (
           <View style={styles.summaryRow}>

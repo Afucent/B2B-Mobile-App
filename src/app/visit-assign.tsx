@@ -2,11 +2,11 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
   FlatList,
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -18,13 +18,19 @@ import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { OutlineButton } from '@/components/ui/OutlineButton';
 import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { SafeScreen, useContentBottomInset } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { StatusPill } from '@/components/ui/StatusPill';
 import { Colors, Radius, Spacing } from '@/constants/theme';
+import { usePermissions } from '@/hooks/usePermissions';
 import { getFieldOperationsSettings } from '@/lib/api/org';
 import {
   assignVisitsBatch,
+  deleteVisitAssignment,
+  getAssignedVisits,
   getVisitAssignOptions,
   getVisitHistory,
+  updateVisitAssignment,
   type FieldVisit,
   type VisitAssignEmployeeOption,
   type VisitAssignOption,
@@ -70,18 +76,28 @@ export default function VisitAssignScreen() {
 }
 
 function VisitAssignContent() {
-  const insets = useSafeAreaInsets();
+  const bottomInset = useContentBottomInset();
+  const { canCreate, canEdit, canDelete } = usePermissions();
+  const canCreateAssignment = canCreate('visit_assign');
+  const canEditAssignment = canEdit('visit_assign');
+  const canDeleteAssignment = canDelete('visit_assign');
   const [items, setItems] = useState<FieldVisit[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<FieldVisit | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await getVisitHistory({ status: 'assigned', limit: 100 });
-      setItems(res.items);
+      try {
+        const res = await getAssignedVisits();
+        setItems(res.items);
+      } catch {
+        const res = await getVisitHistory({ status: 'assigned', limit: 100 });
+        setItems(res.items);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load pending visits');
     } finally {
@@ -95,29 +111,83 @@ function VisitAssignContent() {
     }, [load]),
   );
 
+  function confirmDelete(item: FieldVisit) {
+    if (!canDeleteAssignment) return;
+    Alert.alert(
+      'Delete visit',
+      `Delete the visit assigned to ${item.employee_name ?? 'this employee'}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              try {
+                await deleteVisitAssignment(item.id);
+                await load();
+              } catch (err) {
+                Alert.alert(
+                  'Error',
+                  err instanceof Error ? err.message : 'Failed to delete visit',
+                );
+              }
+            })();
+          },
+        },
+      ],
+    );
+  }
+
   return (
-    <View style={styles.flex}>
+    <SafeScreen>
       <ScreenHeader title="Visit assign" onBack={() => router.back()} />
       <View style={styles.body}>
-        <Text style={styles.sub}>Pending assigned visits. Tap Add visit to schedule one.</Text>
-        <OutlineButton label="+ Add visit" onPress={() => setModalOpen(true)} />
+        <Text style={styles.sub}>
+          Pending assigned visits
+          {canCreateAssignment ? '. Tap Add visit to schedule one.' : '.'}
+        </Text>
+        {canCreateAssignment ? (
+          <OutlineButton label="+ Add visit" onPress={() => setModalOpen(true)} />
+        ) : null}
         {loading ? <Text style={styles.meta}>Loading…</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <FlatList
           data={items}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ gap: Spacing.sm, paddingBottom: insets.bottom + 40 }}
-          ListEmptyComponent={!loading ? <Text style={styles.meta}>No pending visits.</Text> : null}
+          contentContainerStyle={{ gap: Spacing.sm, paddingBottom: bottomInset }}
+          ListEmptyComponent={
+            !loading ? (
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyTitle}>No pending visits</Text>
+                <Text style={styles.emptyCopy}>
+                  Assigned visits waiting to be completed will show up here.
+                </Text>
+              </View>
+            ) : null
+          }
           renderItem={({ item }) => (
             <View style={styles.row}>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, gap: 4 }}>
                 <Text style={styles.name}>{item.employee_name ?? 'Employee'}</Text>
                 <Text style={styles.addr}>{item.dealer_name ?? 'Dealer'}</Text>
                 <Text style={styles.addr}>{formatDate(item.scheduled_at)}</Text>
+                {canEditAssignment || canDeleteAssignment ? (
+                  <View style={styles.actionRow}>
+                    {canEditAssignment ? (
+                      <Pressable onPress={() => setEditing(item)}>
+                        <Text style={styles.editAction}>Edit</Text>
+                      </Pressable>
+                    ) : null}
+                    {canDeleteAssignment ? (
+                      <Pressable onPress={() => confirmDelete(item)}>
+                        <Text style={styles.deleteAction}>Delete</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
-              <View style={styles.pill}>
-                <Text style={styles.pillText}>Pending</Text>
-              </View>
+              <StatusPill label="Pending" tone="pending" />
             </View>
           )}
         />
@@ -131,7 +201,18 @@ function VisitAssignContent() {
           await load();
         }}
       />
-    </View>
+      {editing ? (
+        <EditVisitModal
+          visit={editing}
+          visible
+          onClose={() => setEditing(null)}
+          onUpdated={async () => {
+            setEditing(null);
+            await load();
+          }}
+        />
+      ) : null}
+    </SafeScreen>
   );
 }
 
@@ -248,7 +329,7 @@ function AssignVisitModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={[styles.modalBackdrop, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.modalBackdrop, { paddingBottom: Math.max(insets.bottom, 20) }]}>
         <View style={styles.modalCard}>
           <Text style={styles.modalTitle}>Add visit</Text>
           <Text style={styles.sub}>Pick a range, then set dealers for each working day.</Text>
@@ -352,6 +433,151 @@ function AssignVisitModal({
   );
 }
 
+function EditVisitModal({
+  visit,
+  visible,
+  onClose,
+  onUpdated,
+}: {
+  visit: FieldVisit;
+  visible: boolean;
+  onClose: () => void;
+  onUpdated: () => Promise<void>;
+}) {
+  const insets = useSafeAreaInsets();
+  const [employees, setEmployees] = useState<VisitAssignEmployeeOption[]>([]);
+  const [employeeId, setEmployeeId] = useState(visit.employee_id);
+  const [dealerId, setDealerId] = useState(visit.dealer_id);
+  const [scheduledDate, setScheduledDate] = useState(() =>
+    ymd(new Date(visit.scheduled_at)),
+  );
+  const [pickingDate, setPickingDate] = useState(false);
+  const [showEmployeePicker, setShowEmployeePicker] = useState(false);
+  const [showDealerPicker, setShowDealerPicker] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!visible) return;
+    setEmployeeId(visit.employee_id);
+    setDealerId(visit.dealer_id);
+    setScheduledDate(ymd(new Date(visit.scheduled_at)));
+    setError('');
+    void getVisitAssignOptions()
+      .then((options) => setEmployees(options.employees ?? []))
+      .catch(() => {
+        setEmployees([]);
+        setError('Failed to load assignment options.');
+      });
+  }, [visible, visit]);
+
+  const employee = employees.find((e) => e.id === employeeId);
+  const dealers: VisitAssignOption[] = employee?.dealers ?? [];
+  const dealer = dealers.find((d) => d.id === dealerId);
+
+  async function submit() {
+    if (!employeeId || !dealerId || !scheduledDate) {
+      setError('Employee, dealer, and date are required.');
+      return;
+    }
+    const existingTime = visit.scheduled_at.includes('T')
+      ? visit.scheduled_at.split('T')[1]?.slice(0, 8)
+      : null;
+    const timePart = existingTime && existingTime.length >= 5 ? existingTime : '09:00:00';
+    setLoading(true);
+    setError('');
+    try {
+      await updateVisitAssignment(visit.id, {
+        employee_id: employeeId,
+        dealer_id: dealerId,
+        scheduled_at: `${scheduledDate}T${timePart}`,
+      });
+      await onUpdated();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update visit.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={[styles.modalBackdrop, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Edit visit</Text>
+          <KeyboardSafeScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ gap: Spacing.sm, paddingBottom: 24 }}
+            keyboardShouldPersistTaps="handled">
+            <Text style={styles.label}>Employee *</Text>
+            <Pressable style={styles.select} onPress={() => setShowEmployeePicker(true)}>
+              <Text style={styles.selectText}>
+                {employee?.name ?? visit.employee_name ?? 'Select employee'}
+              </Text>
+            </Pressable>
+
+            <Text style={styles.label}>Dealer *</Text>
+            <Pressable
+              style={styles.select}
+              onPress={() => {
+                if (!employeeId) {
+                  setError('Choose an employee first.');
+                  return;
+                }
+                setShowDealerPicker(true);
+              }}>
+              <Text style={styles.selectText}>
+                {dealer?.name ?? visit.dealer_name ?? 'Select dealer'}
+              </Text>
+            </Pressable>
+
+            <Text style={styles.label}>Scheduled date *</Text>
+            <Pressable style={styles.select} onPress={() => setPickingDate(true)}>
+              <Text style={styles.selectText}>{scheduledDate}</Text>
+            </Pressable>
+            {pickingDate ? (
+              <DateTimePicker
+                value={new Date(`${scheduledDate}T00:00:00`)}
+                mode="date"
+                onChange={(_, date) => {
+                  setPickingDate(Platform.OS === 'ios');
+                  if (date) setScheduledDate(ymd(date));
+                }}
+              />
+            ) : null}
+
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+            <PrimaryButton label="Save changes" loading={loading} onPress={() => void submit()} />
+            <OutlineButton label="Cancel" onPress={onClose} />
+          </KeyboardSafeScrollView>
+        </View>
+      </View>
+
+      <PickerModal
+        visible={showEmployeePicker}
+        title="Choose employee"
+        options={employees.map((e) => ({ id: e.id, name: e.name }))}
+        onClose={() => setShowEmployeePicker(false)}
+        onSelect={(id) => {
+          setEmployeeId(id);
+          setDealerId('');
+          setShowEmployeePicker(false);
+        }}
+      />
+      <PickerModal
+        visible={showDealerPicker}
+        title="Choose dealer"
+        options={dealers.map((d) => ({ id: d.id, name: d.name }))}
+        onClose={() => setShowDealerPicker(false)}
+        onSelect={(id) => {
+          setDealerId(id);
+          setShowDealerPicker(false);
+        }}
+      />
+    </Modal>
+  );
+}
+
 function PickerModal({
   visible,
   title,
@@ -379,7 +605,12 @@ function PickerModal({
                 <Text style={styles.name}>{item.name}</Text>
               </Pressable>
             )}
-            ListEmptyComponent={<Text style={styles.meta}>No options.</Text>}
+            ListEmptyComponent={
+              <View style={styles.emptyWrap}>
+                <Text style={styles.emptyTitle}>No options</Text>
+                <Text style={styles.emptyCopy}>Nothing available to choose from right now.</Text>
+              </View>
+            }
           />
         </View>
       </Pressable>
@@ -388,28 +619,27 @@ function PickerModal({
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: Colors.surface },
   body: { flex: 1, padding: Spacing.md, gap: Spacing.sm },
   sub: { color: Colors.muted, lineHeight: 20 },
   meta: { color: Colors.muted, fontSize: 12 },
   error: { color: Colors.danger },
+  emptyWrap: { paddingVertical: Spacing.xl, paddingHorizontal: Spacing.md, alignItems: 'center', gap: 6 },
+  emptyTitle: { color: Colors.heading, fontWeight: '700', fontSize: 15, textAlign: 'center' },
+  emptyCopy: { color: Colors.muted, fontSize: 13, lineHeight: 18, textAlign: 'center' },
   row: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md,
-    padding: Spacing.md,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
-  name: { fontWeight: '700', color: Colors.heading },
-  addr: { color: Colors.muted, fontSize: 12, marginTop: 2 },
-  pill: {
-    backgroundColor: Colors.pendingBg,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  pillText: { color: Colors.pendingText, fontWeight: '800', fontSize: 11 },
+  name: { fontWeight: '700', color: Colors.heading, fontSize: 15 },
+  addr: { color: Colors.muted, fontSize: 13, lineHeight: 18 },
+  actionRow: { flexDirection: 'row', gap: 14, marginTop: 8 },
+  editAction: { color: Colors.brand, fontWeight: '700', fontSize: 12 },
+  deleteAction: { color: Colors.danger, fontWeight: '700', fontSize: 12 },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.45)',
@@ -456,9 +686,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: Colors.background,
   },
-  toggleActive: { backgroundColor: Colors.brand, borderColor: Colors.brand },
+  toggleActive: { backgroundColor: Colors.brandSoft, borderColor: Colors.brandSoft },
   toggleText: { fontWeight: '700', color: Colors.heading, fontSize: 13 },
-  toggleTextActive: { color: '#fff' },
+  toggleTextActive: { color: Colors.brandDark },
   dayCard: {
     borderWidth: 1,
     borderColor: Colors.border,

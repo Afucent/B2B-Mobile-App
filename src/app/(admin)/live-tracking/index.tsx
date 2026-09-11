@@ -5,12 +5,15 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import LocationMap from '@/components/LocationMap';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
+import { SafeScreen, useContentBottomInset } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { StatusPill, statusTone } from '@/components/ui/StatusPill';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { getLiveTrackingPanel, type LiveEmployeeRow } from '@/lib/api/fieldOps';
 import { formatLiveStatus } from '@/lib/format';
 
 export default function AdminLiveTrackingScreen() {
+  const bottomInset = useContentBottomInset();
   const [items, setItems] = useState<LiveEmployeeRow[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -48,7 +51,7 @@ export default function AdminLiveTrackingScreen() {
 
   return (
     <RequireModuleAccess module="live_location">
-      <View style={styles.flex}>
+      <SafeScreen>
         <ScreenHeader title="Live tracking" onBack={() => router.back()} />
         <LocationMap
           latitude={centerLat}
@@ -59,19 +62,27 @@ export default function AdminLiveTrackingScreen() {
           onMarkerPress={(id) => setFocusId(id)}
         />
         <View style={styles.body}>
-          {loading ? <Text style={styles.meta}>Loading…</Text> : null}
+          {loading ? <Text style={styles.meta}>Loading live locations…</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Text style={styles.section}>
-            {markers.length > 1 ? 'All employees on map' : 'Live tracking'} ({items.length})
+            {markers.length > 1 ? 'Employees on map' : 'Live tracking'} · {items.length}
           </Text>
           <FlatList
             data={items}
             keyExtractor={(item) => item.employee_id}
-            contentContainerStyle={{ gap: Spacing.sm, paddingBottom: Spacing.xl }}
-            ListEmptyComponent={!loading ? <Text style={styles.meta}>No live employees.</Text> : null}
+            contentContainerStyle={{ gap: Spacing.sm, paddingBottom: bottomInset }}
+            ListEmptyComponent={
+              !loading ? (
+                <Text style={styles.empty}>No employees are sharing live location right now.</Text>
+              ) : null
+            }
             renderItem={({ item }) => (
               <Pressable
-                style={[styles.row, focusId === item.employee_id && styles.rowActive]}
+                style={({ pressed }) => [
+                  styles.row,
+                  focusId === item.employee_id && styles.rowActive,
+                  pressed && styles.rowPressed,
+                ]}
                 onPress={() => {
                   setFocusId(item.employee_id);
                   router.push({
@@ -79,39 +90,48 @@ export default function AdminLiveTrackingScreen() {
                     params: { employeeId: item.employee_id },
                   });
                 }}>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, gap: 6 }}>
                   <Text style={styles.name}>{item.employee_name}</Text>
-                  <Text style={styles.sub}>
-                    {[item.designation, formatLiveStatus(item.status) || item.status, item.last_address]
-                      .filter(Boolean)
-                      .join(' · ')}
-                  </Text>
+                  {item.designation ? <Text style={styles.sub}>{item.designation}</Text> : null}
+                  {item.last_address ? (
+                    <Text style={styles.sub} numberOfLines={1}>
+                      {item.last_address}
+                    </Text>
+                  ) : null}
+                  <StatusPill
+                    label={formatLiveStatus(item.status) || item.status || 'Unknown'}
+                    tone={statusTone(item.status)}
+                  />
                 </View>
-                <Text style={styles.link}>Logs</Text>
+                <Text style={styles.link}>Details</Text>
               </Pressable>
             )}
           />
         </View>
-      </View>
+      </SafeScreen>
     </RequireModuleAccess>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { flex: 1, padding: Spacing.md },
-  section: { fontWeight: '800', color: Colors.heading, marginBottom: 8 },
-  meta: { color: Colors.muted },
-  error: { color: Colors.danger },
+  body: { flex: 1, paddingHorizontal: Spacing.md, paddingTop: Spacing.md },
+  section: { fontWeight: '800', color: Colors.heading, marginBottom: 10, fontSize: 15 },
+  meta: { color: Colors.muted, marginBottom: 8 },
+  empty: { color: Colors.muted, lineHeight: 20, paddingVertical: Spacing.md },
+  error: { color: Colors.danger, marginBottom: 8, fontWeight: '600' },
   row: {
     backgroundColor: Colors.background,
-    borderRadius: Radius.md,
+    borderRadius: Radius.lg,
     padding: Spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
   },
-  rowActive: { borderWidth: 2, borderColor: Colors.brand },
-  name: { fontWeight: '700', color: Colors.heading },
-  sub: { color: Colors.muted, fontSize: 12, marginTop: 2 },
-  link: { color: Colors.brand, fontWeight: '700' },
+  rowActive: { borderColor: Colors.brand, backgroundColor: Colors.brandSoft },
+  rowPressed: { opacity: 0.92 },
+  name: { fontWeight: '700', color: Colors.heading, fontSize: 16 },
+  sub: { color: Colors.muted, fontSize: 13 },
+  link: { color: Colors.brand, fontWeight: '700', fontSize: 13 },
 });

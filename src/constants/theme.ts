@@ -54,4 +54,4 @@ export const Radius = {
   pill: 999,
 } as const;
 
-export const APP_VERSION = '2.5';
+export const APP_VERSION = '2.6';

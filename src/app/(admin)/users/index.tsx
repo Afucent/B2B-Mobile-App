@@ -1,11 +1,14 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
-import { OutlineButton } from '@/components/ui/OutlineButton';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
+import { OutlineButton } from '@/components/ui/OutlineButton';
+import { SafeScreen, useContentBottomInset } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { StatusPill, statusTone } from '@/components/ui/StatusPill';
 import { TextField } from '@/components/ui/TextField';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -17,15 +20,17 @@ import {
   type RoleOption,
 } from '@/lib/api/users';
 import { formatRoleName } from '@/lib/permissions';
+
 const PAGE_SIZE = 10;
 const STATUS_OPTIONS = [
-  { value: '', label: 'All statuses' },
+  { value: '', label: 'All' },
   { value: 'active', label: 'Active' },
   { value: 'inactive', label: 'Inactive' },
   { value: 'pending_activation', label: 'Pending' },
 ] as const;
 
 export default function AdminUsersScreen() {
+  const bottomInset = useContentBottomInset();
   const { canCreate } = usePermissions();
   const [items, setItems] = useState<AdminUser[]>([]);
   const [total, setTotal] = useState(0);
@@ -40,6 +45,7 @@ export default function AdminUsersScreen() {
   const [areas, setAreas] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const loadFilters = useCallback(async () => {
     try {
@@ -103,110 +109,193 @@ export default function AdminUsersScreen() {
     [roles],
   );
 
+  const activeFilterCount = [roleId, city, area].filter(Boolean).length;
+
+  function clearAdvancedFilters() {
+    setRoleId('');
+    setCity('');
+    setArea('');
+  }
+
   return (
     <RequireModuleAccess module="users" allowCreate>
-      <View style={styles.flex}>
-        <ScreenHeader title="Users" onBack={() => router.back()} />
+      <SafeScreen>
+        <ScreenHeader
+          title="Users"
+          onBack={() => router.back()}
+          right={
+            canCreate('users') ? (
+              <Pressable
+                onPress={() => router.push('/(admin)/users/new')}
+                hitSlop={8}
+                style={styles.headerAdd}
+                accessibilityRole="button"
+                accessibilityLabel="Add user">
+                <Ionicons name="add" size={22} color={Colors.brand} />
+              </Pressable>
+            ) : null
+          }
+        />
         <View style={styles.body}>
-          <TextField
-            label="Search"
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Name or email"
-            autoCapitalize="none"
-          />
-
-          <Text style={styles.group}>Status</Text>
-          <ChipRow
-            options={STATUS_OPTIONS.map((o) => o.value)}
-            labels={STATUS_OPTIONS.map((o) => o.label)}
-            value={status}
-            onChange={setStatus}
-          />
-
-          <Text style={styles.group}>Role</Text>
-          <ChipRow
-            options={['', ...filterRoles.map((r) => r.id)]}
-            labels={['All roles', ...filterRoles.map((r) => formatRoleName(r.name))]}
-            value={roleId}
-            onChange={setRoleId}
-          />
-
-          {cities.length > 0 ? (
-            <>
-              <Text style={styles.group}>City</Text>
-              <ChipRow
-                options={['', ...cities]}
-                labels={['All cities', ...cities]}
-                value={city}
-                onChange={(v) => {
-                  setCity(v);
-                  setArea('');
-                }}
-              />
-            </>
-          ) : null}
-
-          {areas.length > 0 ? (
-            <>
-              <Text style={styles.group}>Area</Text>
-              <ChipRow
-                options={['', ...areas]}
-                labels={['All areas', ...areas]}
-                value={area}
-                onChange={setArea}
-              />
-            </>
-          ) : null}
-
-          {canCreate('users') ? (
-            <OutlineButton label="Add user" onPress={() => router.push('/(admin)/users/new')} />
-          ) : null}
-
-          <Text style={styles.meta}>{pageLabel}</Text>
-          {loading ? <Text style={styles.meta}>Loading…</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-
           <FlatList
             data={items}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={{ gap: Spacing.sm, paddingBottom: Spacing.xl }}
-            ListEmptyComponent={!loading ? <Text style={styles.meta}>No users found.</Text> : null}
-            renderItem={({ item }) => (
-              <Pressable
-                style={styles.row}
-                onPress={() =>
-                  router.push({ pathname: '/(admin)/users/[id]', params: { id: item.id } })
-                }>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.name}>{item.name}</Text>
-                  <Text style={styles.sub}>{item.personal_email}</Text>
-                  <Text style={styles.sub}>
-                    {[item.roles?.[0] ? formatRoleName(item.roles[0].name) : null, item.city]
-                      .filter(Boolean)
-                      .join(' · ') || '—'}
-                    {item.access_surface ? ` · ${item.access_surface}` : ''}
-                  </Text>
+            contentContainerStyle={{ gap: Spacing.sm, paddingBottom: bottomInset + 56 }}
+            ListHeaderComponent={
+              <View style={styles.headerBlock}>
+                <TextField
+                  label="Search"
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Name or email"
+                  autoCapitalize="none"
+                />
+
+                <Text style={styles.filterLabel}>Status</Text>
+                <View style={styles.chipRow}>
+                  {STATUS_OPTIONS.map((opt) => {
+                    const active = status === opt.value;
+                    return (
+                      <Pressable
+                        key={opt.value || 'all'}
+                        style={[styles.chip, active && styles.chipActive]}
+                        onPress={() => setStatus(opt.value)}>
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                          {opt.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
                 </View>
-                <Text style={styles.status}>{item.status.replace(/_/g, ' ')}</Text>
-              </Pressable>
-            )}
+
+                <Pressable
+                  style={styles.filterToggle}
+                  onPress={() => setFiltersOpen((v) => !v)}
+                  accessibilityRole="button">
+                  <View style={styles.filterToggleLeft}>
+                    <Ionicons name="options-outline" size={16} color={Colors.brand} />
+                    <Text style={styles.filterToggleText}>
+                      More filters{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ''}
+                    </Text>
+                  </View>
+                  <Ionicons
+                    name={filtersOpen ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color={Colors.muted}
+                  />
+                </Pressable>
+
+                {filtersOpen ? (
+                  <View style={styles.advancedBox}>
+                    <Text style={styles.filterLabel}>Role</Text>
+                    <ChipRow
+                      options={['', ...filterRoles.map((r) => r.id)]}
+                      labels={['All roles', ...filterRoles.map((r) => formatRoleName(r.name))]}
+                      value={roleId}
+                      onChange={setRoleId}
+                    />
+
+                    {cities.length > 0 ? (
+                      <>
+                        <Text style={styles.filterLabel}>City</Text>
+                        <ChipRow
+                          options={['', ...cities]}
+                          labels={['All cities', ...cities]}
+                          value={city}
+                          onChange={(v) => {
+                            setCity(v);
+                            setArea('');
+                          }}
+                        />
+                      </>
+                    ) : null}
+
+                    {areas.length > 0 ? (
+                      <>
+                        <Text style={styles.filterLabel}>Area</Text>
+                        <ChipRow
+                          options={['', ...areas]}
+                          labels={['All areas', ...areas]}
+                          value={area}
+                          onChange={setArea}
+                        />
+                      </>
+                    ) : null}
+
+                    {activeFilterCount > 0 ? (
+                      <Pressable onPress={clearAdvancedFilters} hitSlop={8}>
+                        <Text style={styles.clearFilters}>Clear filters</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                <View style={styles.listMetaRow}>
+                  <Text style={styles.meta}>{pageLabel}</Text>
+                  {loading ? <Text style={styles.meta}>Loading…</Text> : null}
+                </View>
+              </View>
+            }
+            ListEmptyComponent={
+              !loading ? (
+                <Text style={styles.empty}>No users match these filters.</Text>
+              ) : null
+            }
+            renderItem={({ item }) => {
+              const roleName = item.roles?.[0] ? formatRoleName(item.roles[0].name) : null;
+              const meta = [roleName, item.city, item.access_surface]
+                .filter(Boolean)
+                .join(' · ');
+              return (
+                <Pressable
+                  style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+                  onPress={() =>
+                    router.push({ pathname: '/(admin)/users/[id]', params: { id: item.id } })
+                  }>
+                  <View style={styles.rowTop}>
+                    <View style={styles.rowTitleBlock}>
+                      <Text style={styles.name} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.sub} numberOfLines={1}>
+                        {item.personal_email}
+                      </Text>
+                      {meta ? (
+                        <Text style={styles.sub} numberOfLines={1}>
+                          {meta}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <StatusPill
+                      label={item.status.replace(/_/g, ' ')}
+                      tone={statusTone(item.status)}
+                      style={styles.statusPill}
+                    />
+                  </View>
+                </Pressable>
+              );
+            }}
           />
 
-          <View style={styles.pager}>
-            <OutlineButton
-              label="Prev"
-              onPress={() => void load(Math.max(0, offset - PAGE_SIZE))}
-              disabled={offset === 0 || loading}
-            />
-            <OutlineButton
-              label="Next"
-              onPress={() => void load(offset + PAGE_SIZE)}
-              disabled={offset + PAGE_SIZE >= total || loading}
-            />
+          <View style={[styles.pager, { paddingBottom: Math.max(bottomInset, Spacing.sm) }]}>
+            <View style={styles.pagerBtn}>
+              <OutlineButton
+                label="Prev"
+                onPress={() => void load(Math.max(0, offset - PAGE_SIZE))}
+                disabled={offset === 0 || loading}
+              />
+            </View>
+            <View style={styles.pagerBtn}>
+              <OutlineButton
+                label="Next"
+                onPress={() => void load(offset + PAGE_SIZE)}
+                disabled={offset + PAGE_SIZE >= total || loading}
+              />
+            </View>
           </View>
         </View>
-      </View>
+      </SafeScreen>
     </RequireModuleAccess>
   );
 }
@@ -228,15 +317,15 @@ function ChipRow({
   onChange: (v: string) => void;
 }) {
   return (
-    <View style={styles.chips}>
+    <View style={styles.chipRow}>
       {options.map((opt, i) => {
         const on = value === opt;
         return (
           <Pressable
             key={`${labels[i]}-${opt || 'all'}`}
-            style={[styles.chip, on && styles.chipOn]}
+            style={[styles.chip, on && styles.chipActive]}
             onPress={() => onChange(opt)}>
-            <Text style={[styles.chipText, on && styles.chipTextOn]}>{labels[i]}</Text>
+            <Text style={[styles.chipText, on && styles.chipTextActive]}>{labels[i]}</Text>
           </Pressable>
         );
       })}
@@ -245,40 +334,114 @@ function ChipRow({
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { flex: 1, padding: Spacing.md, gap: Spacing.sm },
-  group: { color: Colors.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  body: { flex: 1, paddingHorizontal: Spacing.md, paddingTop: Spacing.sm },
+  headerBlock: { gap: Spacing.sm, marginBottom: Spacing.sm },
+  headerAdd: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.brandSoft,
+  },
+  filterLabel: {
+    color: Colors.muted,
+    fontSize: 11,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   chip: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    minHeight: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.background,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  chipActive: {
+    backgroundColor: Colors.brandSoft,
+    borderColor: Colors.brand,
+  },
+  chipText: { fontSize: 12, fontWeight: '600', color: Colors.muted },
+  chipTextActive: { color: Colors.brand, fontWeight: '700' },
+  filterToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.background,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: Radius.pill,
+    borderRadius: Radius.md,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: Colors.background,
+    paddingVertical: 10,
   },
-  chipOn: { backgroundColor: Colors.brand, borderColor: Colors.brand },
-  chipText: { color: Colors.heading, fontWeight: '600', fontSize: 13 },
-  chipTextOn: { color: '#fff' },
-  meta: { color: Colors.muted },
-  error: { color: Colors.danger },
+  filterToggleLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  filterToggleText: { color: Colors.heading, fontWeight: '700', fontSize: 13 },
+  advancedBox: {
+    gap: Spacing.sm,
+    backgroundColor: Colors.background,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    padding: 12,
+  },
+  clearFilters: {
+    color: Colors.brand,
+    fontWeight: '700',
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 4,
+  },
+  listMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 4,
+  },
+  meta: { color: Colors.muted, fontSize: 12, fontWeight: '600' },
+  empty: { color: Colors.muted, fontSize: 13, lineHeight: 20, paddingVertical: Spacing.md },
+  error: { color: Colors.danger, marginBottom: Spacing.sm, fontWeight: '600' },
   row: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md,
-    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 6,
+  },
+  rowPressed: { backgroundColor: Colors.brandSoft },
+  rowTop: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  rowTitleBlock: { flex: 1, gap: 2, minWidth: 0 },
+  name: { fontSize: 14, fontWeight: '700', color: Colors.heading },
+  sub: { color: Colors.muted, fontSize: 12, lineHeight: 16 },
+  statusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  pager: {
+    position: 'absolute',
+    left: Spacing.md,
+    right: Spacing.md,
+    bottom: 0,
+    flexDirection: 'row',
     gap: Spacing.sm,
+    backgroundColor: Colors.surface,
+    paddingTop: Spacing.sm,
   },
-  name: { fontWeight: '700', color: Colors.heading },
-  sub: { color: Colors.muted, fontSize: 12, marginTop: 2 },
-  status: {
-    color: Colors.brand,
-    fontWeight: '700',
-    fontSize: 12,
-    textTransform: 'capitalize',
-    maxWidth: 90,
-    textAlign: 'right',
-  },
-  pager: { flexDirection: 'row', gap: Spacing.sm, paddingBottom: Spacing.md },
+  pagerBtn: { flex: 1 },
 });

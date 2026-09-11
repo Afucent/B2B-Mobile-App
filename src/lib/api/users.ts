@@ -105,7 +105,8 @@ export type CreateUserPayload = {
   mobile?: string | null;
   designation?: string | null;
   department?: string | null;
-  role_id: string;
+  role_id?: string;
+  role_ids?: string[];
   dealer_id?: string | null;
   dealer_ids?: string[];
   access_surface?: 'web' | 'mobile' | 'both';
@@ -161,10 +162,11 @@ export function updateUserStatus(id: string, status: string) {
   });
 }
 
-export function updateUserRole(id: string, roleId: string) {
+export function updateUserRole(id: string, roleIds: string[] | string) {
+  const role_ids = Array.isArray(roleIds) ? roleIds : [roleIds];
   return apiRequest<AdminUser>(`/users/${id}/role`, {
     method: 'PATCH',
-    body: { role_id: roleId },
+    body: { role_ids },
   });
 }
 
@@ -186,6 +188,7 @@ export function setUserPassword(
     new_password: string;
     confirm_password: string;
     force_change_password?: boolean;
+    send_welcome_email?: boolean;
   },
 ) {
   return apiRequest<AdminUser>(`/users/${id}/password`, {
