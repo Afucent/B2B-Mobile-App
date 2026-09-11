@@ -256,7 +256,8 @@ export async function sendThrottledTrackingPing(
   accuracy?: number | null,
   force = false,
 ) {
-  const now = Date.now();
+  const functionHitAt = Date.now();
+  const now = functionHitAt;
 
   if (isPingLocked(now)) {
     pendingPing = { latitude, longitude, accuracy };
@@ -266,6 +267,7 @@ export async function sendThrottledTrackingPing(
       latitude,
       longitude,
       accuracyMeters: accuracy,
+      functionHitAt,
     });
     return false;
   }
@@ -279,6 +281,7 @@ export async function sendThrottledTrackingPing(
         longitude,
         accuracyMeters: accuracy,
         trackingActive: false,
+        functionHitAt,
       });
       return false;
     }
@@ -292,6 +295,7 @@ export async function sendThrottledTrackingPing(
         longitude,
         accuracyMeters: accuracy,
         trackingActive: true,
+        functionHitAt,
       });
       return false;
     }
@@ -306,6 +310,7 @@ export async function sendThrottledTrackingPing(
         longitude,
         accuracyMeters: accuracy,
         trackingActive: true,
+        functionHitAt,
       });
       return false;
     }
@@ -323,6 +328,7 @@ export async function sendThrottledTrackingPing(
         latitude,
         longitude,
         accuracyMeters: accuracy,
+        functionHitAt,
       });
       return false;
     }
@@ -345,6 +351,7 @@ export async function sendThrottledTrackingPing(
         trackingActive: true,
         failed: false,
         force: true,
+        functionHitAt,
       });
       return true;
     } catch (err) {
@@ -369,6 +376,7 @@ export async function sendThrottledTrackingPing(
           trackingActive: true,
           failed: false,
           force: true,
+          functionHitAt,
         });
         return false;
       }
@@ -383,6 +391,7 @@ export async function sendThrottledTrackingPing(
         longitude,
         accuracyMeters: accuracy,
         trackingActive: true,
+        functionHitAt,
       });
       void emitMobileGpsLog({
         event: 'location.ping_client',
@@ -397,6 +406,7 @@ export async function sendThrottledTrackingPing(
         trackingActive: true,
         failed: true,
         force: true,
+        functionHitAt,
       });
 
       const sessionOver = classified.reason === 'session_over';
@@ -417,6 +427,7 @@ export async function sendThrottledTrackingPing(
       latitude,
       longitude,
       accuracyMeters: accuracy,
+      functionHitAt,
     });
     pingLockUntil = 0;
     return false;
