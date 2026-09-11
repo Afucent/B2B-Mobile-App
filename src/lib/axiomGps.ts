@@ -33,66 +33,6 @@ let lastSkipWhyAt = 0;
 const RUNTIME_MIN_INTERVAL_MS = 60_000;
 const SKIP_LOG_MIN_INTERVAL_MS = 30_000;
 
-const IST_TIME_ZONE = 'Asia/Kolkata';
-
-function formatIndianTime(hitAt: Date) {
-  // Always Asia/Kolkata — independent of the phone's timezone setting.
-  try {
-    return new Intl.DateTimeFormat('en-IN', {
-      timeZone: IST_TIME_ZONE,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZoneName: 'short',
-    }).format(hitAt);
-  } catch {
-    // Fallback if Intl timezone data is missing on some Android builds.
-    const istMs = hitAt.getTime() + 5.5 * 60 * 60 * 1000;
-    const d = new Date(istMs);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())} IST`;
-  }
-}
-
-function formatIndianIso(hitAt: Date) {
-  // ISO-like string fixed to IST offset (+05:30).
-  const istMs = hitAt.getTime() + 5.5 * 60 * 60 * 1000;
-  const d = new Date(istMs);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}+05:30`;
-}
-
-function resolveHitAt(inputHitAt?: number | string | Date | null) {
-  if (inputHitAt instanceof Date && !Number.isNaN(inputHitAt.getTime())) return inputHitAt;
-  if (typeof inputHitAt === 'number' && Number.isFinite(inputHitAt)) return new Date(inputHitAt);
-  if (typeof inputHitAt === 'string' && inputHitAt.trim()) {
-    const parsed = new Date(inputHitAt);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
-  }
-  return new Date();
-}
-
-function timestampMeta(hitAt: Date) {
-  const ms = hitAt.getTime();
-  return {
-    // When the background/GPS function hit on the device (not Axiom ingest time).
-    function_hit_at: hitAt.toISOString(),
-    function_hit_at_ms: ms,
-    // Indian Standard Time (IST / Asia/Kolkata)
-    function_hit_at_ist: formatIndianTime(hitAt),
-    function_hit_at_ist_iso: formatIndianIso(hitAt),
-    indian_time: formatIndianTime(hitAt),
-    timezone: IST_TIME_ZONE,
-    timezone_label: 'IST',
-    // Keep Axiom timeline aligned to the function hit.
-    _time: hitAt.toISOString(),
-  };
-}
-
 function deviceMeta() {
   const model =
     Device.modelName ||
@@ -105,8 +45,42 @@ function deviceMeta() {
     device_name: name,
     device_model: model,
     device_brand: Device.brand || null,
+    // device_manufacturer: Device.manufacturer || null,
     device_os_name: Device.osName || Platform.OS,
     device_os_version: Device.osVersion || String(Platform.Version),
+  };
+}
+
+function formatIndiaTime(date: Date) {
+  try {
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    }).format(date);
+  } catch {
+    // Asia/Kolkata is always UTC+05:30 (no DST).
+    const istMs = date.getTime() + 5.5 * 60 * 60 * 1000;
+    return `${new Date(istMs).toISOString().replace('T', ' ').slice(0, 19)} IST`;
+  }
+}
+
+function timestampMeta(now = new Date()) {
+  const ms = now.getTime();
+  const indiaTime = formatIndiaTime(now);
+  return {
+    _time: now.toISOString(),
+    timestamp_utc: now.toISOString(),
+    timestamp_ms: ms,
+    // Primary human-readable time for India
+    india_time: indiaTime,
+    fetched_at_ist: indiaTime,
+    timezone: 'Asia/Kolkata',
   };
 }
 
@@ -173,8 +147,7 @@ function ingestUrl() {
     '',
   );
   const dataset = process.env.EXPO_PUBLIC_AXIOM_DATASET!.trim();
-  // Use app function-hit time for Axiom timeline (not ingest arrival time).
-  return `${edge}/v1/ingest/${dataset}?timestamp-field=function_hit_at`;
+  return `${edge}/v1/ingest/${dataset}`;
 }
 
 async function readStore(key: string) {
@@ -243,6 +216,7 @@ export type MobileGpsEvent =
   | 'location.runtime'
   | 'location.native_start'
   | 'location.native_stop'
+  | 'location.gps_fetch'
   | 'location.ping_client'
   | 'location.permission'
   | 'location.task'
@@ -271,14 +245,9 @@ export async function emitMobileGpsLog(input: {
   statusCode?: number | null;
   force?: boolean;
   failed?: boolean;
-  /** When the background/GPS function actually hit (epoch ms / ISO / Date). */
-  functionHitAt?: number | string | Date | null;
   [key: string]: unknown;
 }) {
   if (!axiomEnabled()) return;
-
-  // Capture before any await — this is when the function hit on device.
-  const functionHitAt = resolveHitAt(input.functionHitAt);
 
   try {
     await warmIdentity();
@@ -296,7 +265,6 @@ export async function emitMobileGpsLog(input: {
       statusCode,
       force: _force,
       failed,
-      functionHitAt: _functionHitAt,
       ...extra
     } = input;
 
@@ -308,7 +276,7 @@ export async function emitMobileGpsLog(input: {
         (outcome === 'not_running' && trackingActive === true));
 
     const payload = {
-      ...timestampMeta(functionHitAt),
+      ...timestampMeta(),
       ...deviceMeta(),
       app: 'afbex-mobile',
       source: 'mobile',
@@ -362,10 +330,8 @@ export async function logGpsFailure(input: {
   trackingActive?: boolean;
   nativeRunning?: boolean;
   remaining_ms?: number | null;
-  functionHitAt?: number | string | Date | null;
   [key: string]: unknown;
 }) {
-  const functionHitAt = resolveHitAt(input.functionHitAt);
   const {
     reason,
     detail,
@@ -376,7 +342,6 @@ export async function logGpsFailure(input: {
     accuracyMeters,
     trackingActive,
     nativeRunning,
-    functionHitAt: _functionHitAt,
     ...extra
   } = input;
 
@@ -394,7 +359,6 @@ export async function logGpsFailure(input: {
     nativeRunning,
     failed: true,
     force: true,
-    functionHitAt,
     ...extra,
   });
 }
@@ -409,11 +373,9 @@ export async function reportGpsRuntimeStatus(input: {
   detail?: string;
   reason?: string;
   force?: boolean;
-  functionHitAt?: number | string | Date | null;
 }) {
-  const functionHitAt = resolveHitAt(input.functionHitAt);
   const fingerprint = `${input.trackingActive}:${input.nativeRunning}`;
-  const now = functionHitAt.getTime();
+  const now = Date.now();
   const changed = fingerprint !== lastRuntimeFingerprint;
   if (!input.force && !changed && now - lastRuntimeAt < RUNTIME_MIN_INTERVAL_MS) {
     return;
@@ -446,7 +408,6 @@ export async function reportGpsRuntimeStatus(input: {
     force: true,
     failed: mismatch,
     mismatch,
-    functionHitAt,
   });
 
   if (mismatch) {
@@ -455,7 +416,6 @@ export async function reportGpsRuntimeStatus(input: {
       detail: 'Tracking session active but native GPS service is not running.',
       trackingActive: true,
       nativeRunning: false,
-      functionHitAt,
     });
   }
 }
@@ -468,10 +428,8 @@ export async function logGpsSkipWhy(input: {
   longitude?: number | null;
   accuracyMeters?: number | null;
   remainingMs?: number;
-  functionHitAt?: number | string | Date | null;
 }) {
-  const functionHitAt = resolveHitAt(input.functionHitAt);
-  const now = functionHitAt.getTime();
+  const now = Date.now();
   if (now - lastSkipWhyAt < SKIP_LOG_MIN_INTERVAL_MS) return;
   lastSkipWhyAt = now;
 
@@ -499,7 +457,6 @@ export async function logGpsSkipWhy(input: {
     remaining_ms: input.remainingMs ?? null,
     failed: false,
     force: true,
-    functionHitAt,
   });
 }
 

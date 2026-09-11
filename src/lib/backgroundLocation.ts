@@ -256,8 +256,7 @@ export async function sendThrottledTrackingPing(
   accuracy?: number | null,
   force = false,
 ) {
-  const functionHitAt = Date.now();
-  const now = functionHitAt;
+  const now = Date.now();
 
   if (isPingLocked(now)) {
     pendingPing = { latitude, longitude, accuracy };
@@ -267,7 +266,6 @@ export async function sendThrottledTrackingPing(
       latitude,
       longitude,
       accuracyMeters: accuracy,
-      functionHitAt,
     });
     return false;
   }
@@ -281,7 +279,6 @@ export async function sendThrottledTrackingPing(
         longitude,
         accuracyMeters: accuracy,
         trackingActive: false,
-        functionHitAt,
       });
       return false;
     }
@@ -295,7 +292,6 @@ export async function sendThrottledTrackingPing(
         longitude,
         accuracyMeters: accuracy,
         trackingActive: true,
-        functionHitAt,
       });
       return false;
     }
@@ -310,7 +306,6 @@ export async function sendThrottledTrackingPing(
         longitude,
         accuracyMeters: accuracy,
         trackingActive: true,
-        functionHitAt,
       });
       return false;
     }
@@ -328,7 +323,6 @@ export async function sendThrottledTrackingPing(
         latitude,
         longitude,
         accuracyMeters: accuracy,
-        functionHitAt,
       });
       return false;
     }
@@ -351,7 +345,6 @@ export async function sendThrottledTrackingPing(
         trackingActive: true,
         failed: false,
         force: true,
-        functionHitAt,
       });
       return true;
     } catch (err) {
@@ -376,7 +369,6 @@ export async function sendThrottledTrackingPing(
           trackingActive: true,
           failed: false,
           force: true,
-          functionHitAt,
         });
         return false;
       }
@@ -391,7 +383,6 @@ export async function sendThrottledTrackingPing(
         longitude,
         accuracyMeters: accuracy,
         trackingActive: true,
-        functionHitAt,
       });
       void emitMobileGpsLog({
         event: 'location.ping_client',
@@ -406,7 +397,6 @@ export async function sendThrottledTrackingPing(
         trackingActive: true,
         failed: true,
         force: true,
-        functionHitAt,
       });
 
       const sessionOver = classified.reason === 'session_over';
@@ -427,7 +417,6 @@ export async function sendThrottledTrackingPing(
       latitude,
       longitude,
       accuracyMeters: accuracy,
-      functionHitAt,
     });
     pingLockUntil = 0;
     return false;
@@ -528,12 +517,38 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
     const latest = locations?.length ? locations[locations.length - 1] : null;
     const coords = latest?.coords;
     if (coords) {
-      // Do not spam Axiom with every GPS wake — only ping attempts / failures matter.
+      // Log when background GPS actually fetches, with Indian time on the event.
+      void emitMobileGpsLog({
+        event: 'location.gps_fetch',
+        outcome: 'fetched',
+        reason: 'background_fetch',
+        why: 'Background location fetched coordinates.',
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        accuracyMeters: coords.accuracy,
+        nativeRunning: true,
+        trackingActive: true,
+        failed: false,
+        force: true,
+      });
       await sendThrottledTrackingPing(coords.latitude, coords.longitude, coords.accuracy);
       return;
     }
     const fallback = await Location.getLastKnownPositionAsync().catch(() => null);
     if (fallback?.coords) {
+      void emitMobileGpsLog({
+        event: 'location.gps_fetch',
+        outcome: 'fetched',
+        reason: 'last_known_fallback',
+        why: 'Background location used last-known coordinates.',
+        latitude: fallback.coords.latitude,
+        longitude: fallback.coords.longitude,
+        accuracyMeters: fallback.coords.accuracy,
+        nativeRunning: true,
+        trackingActive: true,
+        failed: false,
+        force: true,
+      });
       await sendThrottledTrackingPing(
         fallback.coords.latitude,
         fallback.coords.longitude,
