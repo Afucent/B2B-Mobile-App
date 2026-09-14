@@ -1,21 +1,31 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { Image } from 'expo-image';
-import { router } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { router, type Href } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
+import { useTracking } from '@/context/TrackingContext';
 import { usePermissions } from '@/hooks/usePermissions';
+import {
+  executeClockIn,
+  executeClockOut,
+  executeEndTracking,
+  executeStartTracking,
+  gateAttendanceLocation,
+  type AttendanceActionFailure,
+} from '@/lib/attendanceActions';
 import { getTodayStatus, type TodayStatus } from '@/lib/api/attendance';
 import { getMyVisits, getVisitHistory, type FieldVisit } from '@/lib/api/visits';
-import { durationLabel, firstName, formatClock, greetingForNow, initials } from '@/lib/format';
+import { durationLabel, formatClock } from '@/lib/format';
 import { ymd } from '@/lib/leaveUi';
 
 type Props = {
   refreshKey?: number;
 };
+
+type BusyAction = 'clock-in' | 'clock-out' | 'start-tracking' | 'end-tracking' | null;
 
 function isCompleted(visit: FieldVisit) {
   return visit.status.toLowerCase() === 'completed';
@@ -35,13 +45,27 @@ function currentHours(status: TodayStatus | null) {
   return (record.working_hours ?? 0).toFixed(1);
 }
 
+function handleActionFailure(error: AttendanceActionFailure, fallbackTitle: string) {
+  if (error.kind === 'navigate') {
+    router.push(error.href);
+    return;
+  }
+  if (error.kind === 'already_clocked_in') {
+    return;
+  }
+  Alert.alert(fallbackTitle, error.message);
+}
+
 export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
   const { user } = useAuth();
-  const { has, canView, canCreate, showMyAttendanceLeave } = usePermissions();
+  const { pingMinutes, refreshStatus } = useTracking();
+  const { has, canView, canCreate, showMyAttendanceLeave, isOrgAdmin } = usePermissions();
   const [today, setToday] = useState<TodayStatus | null>(null);
   const [visits, setVisits] = useState<FieldVisit[]>([]);
   const [visitsTotal, setVisitsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [busyAction, setBusyAction] = useState<BusyAction>(null);
+  const busyRef = useRef(false);
 
   const canUseClock =
     showMyAttendanceLeave ||
@@ -53,6 +77,9 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
   const canUseHistoryApi = canView('visit_history');
   const canViewVisits =
     canUseMyVisitsApi || canUseHistoryApi || showMyAttendanceLeave;
+  // Backend: POST /attendance/location/start|end requires user_tracking:read
+  // (matrix: "Employee start & end location" View) — same as web canView('user_tracking').
+  const canTrack = canView('user_tracking');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -106,10 +133,88 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
   );
   const completedVisits = visits.filter(isCompleted).length;
   const completion = visitsTotal ? Math.round((completedVisits / visitsTotal) * 100) : 0;
-  const name = user?.name ?? 'there';
 
   const onDuty = Boolean(today?.is_clocked_in);
+  const trackingActive = Boolean(today?.tracking_active);
   const clockTime = today?.record?.clock_in_time ? formatClock(today.record.clock_in_time) : null;
+
+  async function withGate(next: string, action: BusyAction, run: () => Promise<void>) {
+    if (busyRef.current) return;
+    const block = await gateAttendanceLocation(next);
+    if (block) {
+      router.push(block as Href);
+      return;
+    }
+    busyRef.current = true;
+    setBusyAction(action);
+    try {
+      await run();
+    } finally {
+      busyRef.current = false;
+      setBusyAction(null);
+    }
+  }
+
+  async function onClockIn() {
+    await withGate('/clock-in', 'clock-in', async () => {
+      const result = await executeClockIn();
+      if (!result.ok) {
+        if (result.error.kind === 'already_clocked_in') {
+          await load();
+          await refreshStatus();
+          return;
+        }
+        handleActionFailure(result.error, 'Clock In');
+        return;
+      }
+      await load();
+      await refreshStatus();
+    });
+  }
+
+  async function onClockOut() {
+    await withGate('/clock-out', 'clock-out', async () => {
+      const result = await executeClockOut();
+      if (!result.ok) {
+        handleActionFailure(result.error, 'Clock Out');
+        await load();
+        return;
+      }
+      await refreshStatus();
+      await load();
+    });
+  }
+
+  async function onStartTracking() {
+    if (!onDuty) {
+      Alert.alert('Start Tracking', 'Clock in first, then start live tracking.');
+      return;
+    }
+    await withGate('/start-tracking', 'start-tracking', async () => {
+      const result = await executeStartTracking(pingMinutes);
+      if (!result.ok) {
+        await refreshStatus();
+        await load();
+        handleActionFailure(result.error, 'Start Tracking');
+        return;
+      }
+      await refreshStatus();
+      await load();
+    });
+  }
+
+  async function onEndTracking() {
+    await withGate('/start-tracking', 'end-tracking', async () => {
+      const result = await executeEndTracking();
+      if (!result.ok) {
+        await load();
+        handleActionFailure(result.error, 'End Tracking');
+        return;
+      }
+      await refreshStatus();
+      await load();
+    });
+  }
 
   return (
     <View style={styles.wrap}>
@@ -153,10 +258,29 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
               <Ionicons name="time-outline" size={23} color="#BCE9E4" />
             </View>
           </View>
-          <Pressable style={styles.clockButton} onPress={() => router.push('/(app)/clock')}>
-            <Text style={styles.clockButtonText}>{onDuty ? 'Manage attendance' : 'Clock in'}</Text>
-            <Ionicons name="chevron-forward" size={18} color={Colors.brand} />
-          </Pressable>
+          <View style={styles.dutyActions}>
+            <DutyActionButton
+              label={onDuty ? 'Clock Out' : 'Clock In'}
+              loading={busyAction === 'clock-in' || busyAction === 'clock-out'}
+              disabled={busyAction !== null}
+              onPress={() => {
+                if (onDuty) void onClockOut();
+                else void onClockIn();
+              }}
+            />
+            {canTrack ? (
+              <DutyActionButton
+                label={trackingActive ? 'End Tracking' : 'Start Tracking'}
+                loading={busyAction === 'start-tracking' || busyAction === 'end-tracking'}
+                disabled={busyAction !== null || !onDuty}
+                secondary
+                onPress={() => {
+                  if (trackingActive) void onEndTracking();
+                  else void onStartTracking();
+                }}
+              />
+            ) : null}
+          </View>
         </View>
       ) : null}
 
@@ -215,17 +339,19 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
         </View>
       ) : null}
 
-      {(canUseClock || canViewVisits) ? (
+      {(!isOrgAdmin || canViewVisits) ? (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Quick actions</Text>
             <Text style={styles.sectionHint}>Start with one tap</Text>
           </View>
           <View style={styles.actions}>
-            {canUseClock ? <QuickAction icon="time-outline" label={onDuty ? 'Clock / out' : 'Clock in'} onPress={() => router.push('/(app)/clock')} /> : null}
-            {canViewVisits ? <QuickAction icon="location-outline" label="Next visit" onPress={() => router.push('/(app)/visits')} /> : null}
-            {/* {canViewVisits ? <QuickAction icon="map-outline" label="Route" onPress={() => router.push('/visit-map')} /> : null}
-            {canViewVisits ? <QuickAction icon="document-outline" label="Task" onPress={() => router.push('/assignment')} /> : null} */}
+            {canViewVisits ? (
+              <QuickAction icon="location-outline" label="Next visit" onPress={() => router.push('/(app)/visits')} />
+            ) : null}
+            {!isOrgAdmin ? (
+              <QuickAction icon="calendar-outline" label="Apply leave" onPress={() => router.push('/apply-leave')} />
+            ) : null}
           </View>
         </View>
       ) : null}
@@ -242,10 +368,62 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function QuickAction({ icon, label, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }) {
+function DutyActionButton({
+  label,
+  onPress,
+  loading = false,
+  disabled = false,
+  secondary = false,
+}: {
+  label: string;
+  onPress: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+  secondary?: boolean;
+}) {
   return (
-    <Pressable style={styles.action} onPress={onPress}>
-      <View style={styles.actionIcon}><Ionicons name={icon} size={20} color="#008C87" /></View>
+    <Pressable
+      style={[
+        styles.clockButton,
+        secondary && styles.clockButtonSecondary,
+        (disabled || loading) && styles.clockButtonDisabled,
+      ]}
+      onPress={onPress}
+      disabled={disabled || loading}>
+      {loading ? (
+        <ActivityIndicator color={secondary ? '#BCE9E4' : Colors.brand} />
+      ) : (
+        <Text style={[styles.clockButtonText, secondary && styles.clockButtonTextSecondary]}>{label}</Text>
+      )}
+    </Pressable>
+  );
+}
+
+function QuickAction({
+  icon,
+  label,
+  onPress,
+  loading = false,
+  disabled = false,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <Pressable
+      style={[styles.action, (disabled || loading) && styles.actionDisabled]}
+      onPress={onPress}
+      disabled={disabled || loading}>
+      <View style={styles.actionIcon}>
+        {loading ? (
+          <ActivityIndicator size="small" color="#008C87" />
+        ) : (
+          <Ionicons name={icon} size={20} color="#008C87" />
+        )}
+      </View>
       <Text style={styles.actionText}>{label}</Text>
     </Pressable>
   );
@@ -266,8 +444,26 @@ const styles = StyleSheet.create({
   dutyTime: { color: '#FFFFFF', fontSize: 25, fontWeight: '800', marginTop: 8 },
   dutyCopy: { color: '#BBD0D0', fontSize: 12, marginTop: 4 },
   clockIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#2A5961', alignItems: 'center', justifyContent: 'center' },
-  clockButton: { minHeight: 46, backgroundColor: '#7ACDC1', borderRadius: Radius.sm, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  clockButtonText: { color: Colors.brand, fontSize: 15, fontWeight: '700' },
+  dutyActions: { flexDirection: 'row', gap: 8 },
+  clockButton: {
+    flex: 1,
+    minHeight: 46,
+    backgroundColor: '#7ACDC1',
+    borderRadius: Radius.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 8,
+  },
+  clockButtonSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: '#7ACDC1',
+  },
+  clockButtonDisabled: { opacity: 0.45 },
+  clockButtonText: { color: Colors.brand, fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  clockButtonTextSecondary: { color: '#BCE9E4' },
   statGrid: { flexDirection: 'row', gap: 8 },
   statCard: { flex: 1, minHeight: 74, backgroundColor: '#FFFFFF', borderRadius: Radius.md, borderWidth: 1, borderColor: '#D7E8E8', padding: 12, justifyContent: 'space-between' },
   statLabel: { color: '#9AAEAF', fontSize: 9, fontWeight: '800', letterSpacing: 0.7 },
@@ -289,23 +485,24 @@ const styles = StyleSheet.create({
   visitTime: { color: '#7D9092', fontSize: 9, fontWeight: '700' },
   visitTimeActive: { color: '#008C87' },
   emptyText: { color: Colors.muted, fontSize: 13, paddingVertical: 8 },
-actions: {
-  flexDirection: 'row',
-  flexWrap: 'wrap',
-  gap: 8,
-},
-action: {
-  width: '48%',
-  minHeight: 54,
-  backgroundColor: '#FFFFFF',
-  borderWidth: 1,
-  borderColor: '#D7E8E8',
-  borderRadius: Radius.md,
-  paddingHorizontal: 10,
-  flexDirection: 'row',
-  alignItems: 'center',
-  gap: 9,
-},
+  actions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  action: {
+    width: '48%',
+    minHeight: 54,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D7E8E8',
+    borderRadius: Radius.md,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  actionDisabled: { opacity: 0.6 },
   actionIcon: { width: 28, height: 28, borderRadius: 8, backgroundColor: '#E2F4F0', alignItems: 'center', justifyContent: 'center' },
   actionText: { color: '#4F7173', fontSize: 14, fontWeight: '600', flexShrink: 1 },
 });

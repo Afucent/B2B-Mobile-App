@@ -11,27 +11,13 @@ import { Colors, Radius } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useTracking } from '@/context/TrackingContext';
 import {
-  endLocation,
   getEmployeeLiveDetail,
   getTodayStatus,
-  startLocation,
   type EmployeeLiveDetail,
   type TodayStatus,
 } from '@/lib/api/attendance';
+import { executeEndTracking, executeStartTracking } from '@/lib/attendanceActions';
 import { durationLabel, formatClock, formatKm } from '@/lib/format';
-import {
-  backgroundStartErrorMessage,
-  beginTrackingStartGate,
-  endTrackingStartGate,
-  forceStopBackgroundLocation,
-  isBackgroundLocationRunning,
-  persistPingIntervalMinutes,
-  persistTrackingActive,
-  scheduleBatteryOptimizationPrompt,
-  sendImmediateStartupPing,
-  startBackgroundLocationResult,
-  warmBackgroundTrackingSession,
-} from '@/lib/backgroundLocation';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
 
 export default function StartTrackingScreen() {
@@ -110,60 +96,20 @@ export default function StartTrackingScreen() {
   async function onStartTracking() {
     setBusy(true);
     setError('');
-    beginTrackingStartGate();
     try {
-      const next = loc ?? (await requestLocation());
-      setLoc(next);
-      await persistPingIntervalMinutes(pingMinutes);
-      await warmBackgroundTrackingSession();
-
-      // Server session must exist before any location-ping (otherwise API returns 403 and we used to tear GPS down).
-      await startLocation(next.latitude, next.longitude);
-      await persistTrackingActive(true);
-
-      const gps = await startBackgroundLocationResult();
-      if (!gps.ok) {
-        await forceStopBackgroundLocation().catch(() => undefined);
-        await endLocation(next.latitude, next.longitude).catch(() => undefined);
+      const result = await executeStartTracking(pingMinutes, loc);
+      if (!result.ok) {
         await refreshStatus();
-        if (gps.reason === 'background_denied' || gps.reason === 'foreground_denied') {
-          router.replace({
-            pathname: '/location-required',
-            params: {
-              reason: gps.reason === 'background_denied' ? 'background' : 'denied',
-              next: '/start-tracking',
-            },
-          });
+        if (result.error.kind === 'navigate') {
+          router.replace(result.error.href);
           return;
         }
-        if (gps.reason === 'services_off') {
-          router.replace({
-            pathname: '/location-required',
-            params: { reason: 'off', next: '/start-tracking' },
-          });
-          return;
-        }
-        setError(backgroundStartErrorMessage(gps.reason));
+        setError(result.error.kind === 'message' ? result.error.message : 'Unable to start tracking.');
         return;
       }
-
-      const nativeRunning = await isBackgroundLocationRunning();
-      if (!nativeRunning) {
-        await forceStopBackgroundLocation().catch(() => undefined);
-        await endLocation(next.latitude, next.longitude).catch(() => undefined);
-        await refreshStatus();
-        setError(backgroundStartErrorMessage('start_failed'));
-        return;
-      }
-
-      await sendImmediateStartupPing();
-      scheduleBatteryOptimizationPrompt();
+      setLoc(result.data.loc);
       await refresh();
-    } catch (err) {
-      await forceStopBackgroundLocation().catch(() => undefined);
-      setError(err instanceof Error ? err.message : 'Unable to start tracking.');
     } finally {
-      endTrackingStartGate();
       setBusy(false);
     }
   }
@@ -172,14 +118,18 @@ export default function StartTrackingScreen() {
     setBusy(true);
     setError('');
     try {
-      const next = loc ?? (await requestLocation());
-      setLoc(next);
-      await endLocation(next.latitude, next.longitude);
-      await forceStopBackgroundLocation().catch(() => undefined);
+      const result = await executeEndTracking(loc);
+      if (!result.ok) {
+        if (result.error.kind === 'navigate') {
+          router.replace(result.error.href);
+          return;
+        }
+        setError(result.error.kind === 'message' ? result.error.message : 'Unable to end tracking.');
+        return;
+      }
+      setLoc(result.data.loc);
       await refreshStatus();
       router.replace('/(app)/clock');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to end tracking.');
     } finally {
       setBusy(false);
     }

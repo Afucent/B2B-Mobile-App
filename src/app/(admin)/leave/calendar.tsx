@@ -14,6 +14,7 @@ import { getLeaveCalendar, type CalendarEmployeeRow, type LeaveCalendarResponse 
 import { listAssignableRoles, listUsers, type AdminUser, type RoleOption } from '@/lib/api/users';
 import { monthKey } from '@/lib/format';
 import { displayYmd, displayYmdRange, leaveStatusMeta } from '@/lib/leaveUi';
+import { formatRoleName } from '@/lib/permissions';
 
 function daysInMonth(date: Date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
@@ -48,8 +49,16 @@ export default function AdminLeaveCalendarScreen() {
 function TeamCalendarContent() {
   const insets = useSafeAreaInsets();
   const { isOrgAdmin, canEdit, canCreate, canView } = usePermissions();
-  const canViewAll =
-    isOrgAdmin || canEdit('leave_requests') || canCreate('leave_types') || canView('users');
+  // /users/roles requires users:read OR leave_requests:read (unchanged backend).
+  const canLoadRoles =
+    isOrgAdmin || canView('users') || canView('leave_requests');
+  // /users list requires users:read OR leave_requests:update.
+  const canLoadEmployees =
+    isOrgAdmin ||
+    canView('users') ||
+    canEdit('leave_requests') ||
+    canCreate('leave_types');
+  const canViewAll = canLoadEmployees;
   const [cursor, setCursor] = useState(() => new Date());
   const [data, setData] = useState<LeaveCalendarResponse | null>(null);
   const [roles, setRoles] = useState<RoleOption[]>([]);
@@ -80,20 +89,53 @@ function TeamCalendarContent() {
 
   useFocusEffect(
     useCallback(() => {
-      void listAssignableRoles()
-        .then((items) => setRoles(items.filter((role) => !isOrgAdminRole(role.name))))
-        .catch(() => setRoles([]));
-      if (canViewAll) {
-        void listUsers(0, 200)
-          .then((userData) =>
-            setEmployees(userData.items.filter((employee) => !employee.roles?.some((role) => isOrgAdminRole(role.name)))),
-          )
-          .catch(() => setEmployees([]));
-      } else {
-        setEmployees([]);
-        setEmployeeFilter('all');
+      let cancelled = false;
+
+      async function loadFilters() {
+        const [rolesResult, usersResult] = await Promise.allSettled([
+          canLoadRoles ? listAssignableRoles() : Promise.resolve([] as RoleOption[]),
+          canLoadEmployees
+            ? listUsers(0, 200)
+            : Promise.resolve({ items: [] as AdminUser[], total: 0 }),
+        ]);
+
+        if (cancelled) return;
+
+        const nextEmployees =
+          usersResult.status === 'fulfilled'
+            ? usersResult.value.items.filter(
+                (employee) => !employee.roles?.some((role) => isOrgAdminRole(role.name)),
+              )
+            : [];
+        setEmployees(nextEmployees);
+
+        let nextRoles: RoleOption[] =
+          rolesResult.status === 'fulfilled'
+            ? rolesResult.value.filter((role) => !isOrgAdminRole(role.name))
+            : [];
+
+        // If /users/roles failed or returned nothing, derive roles from loaded users.
+        if (nextRoles.length === 0 && nextEmployees.length > 0) {
+          const byId = new Map<string, RoleOption>();
+          for (const employee of nextEmployees) {
+            for (const role of employee.roles ?? []) {
+              if (!isOrgAdminRole(role.name) && !byId.has(role.id)) {
+                byId.set(role.id, { id: role.id, name: role.name });
+              }
+            }
+          }
+          nextRoles = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+        }
+
+        setRoles(nextRoles);
+        if (!canLoadEmployees) setEmployeeFilter('all');
       }
-    }, [canViewAll]),
+
+      void loadFilters();
+      return () => {
+        cancelled = true;
+      };
+    }, [canLoadRoles, canLoadEmployees]),
   );
 
   const loadCalendar = useCallback(async () => {
@@ -217,7 +259,7 @@ function TeamCalendarContent() {
           </Pressable>
         </View>
 
-       
+        {canViewAll ? (
           <View style={styles.filtersCard}>
             <View style={styles.filtersHeading}>
               <Ionicons name="options-outline" size={16} color={Colors.brand} />
@@ -227,15 +269,22 @@ function TeamCalendarContent() {
               label="Role"
               value={roleFilter}
               onChange={(value) => { setRoleFilter(value); setEmployeeFilter('all'); }}
-              options={[{ id: 'all', name: 'All roles' }, ...roles.map((role) => ({ id: role.id, name: role.name }))]}
+              options={[
+                { id: 'all', name: 'All roles' },
+                ...roles.map((role) => ({ id: role.id, name: formatRoleName(role.name) })),
+              ]}
             />
             <FilterSelect
               label="Employee"
               value={employeeFilter}
               onChange={setEmployeeFilter}
-              options={[{ id: 'all', name: 'All employees' }, ...usersForRole.map((employee) => ({ id: employee.id, name: employee.name }))]}
+              options={[
+                { id: 'all', name: 'All employees' },
+                ...usersForRole.map((employee) => ({ id: employee.id, name: employee.name })),
+              ]}
             />
           </View>
+        ) : null}
 
         {data ? (
           <View style={styles.summaryRow}>

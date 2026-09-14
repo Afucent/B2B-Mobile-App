@@ -67,10 +67,7 @@ function ClockContent() {
   const [missedOpen, setMissedOpen] = useState(false);
   const { settings, refreshSettings } = useFieldOpsSettings();
 
-  const canTrack =
-    canCreate('user_tracking') ||
-    has('live_location', 'create') ||
-    has('live_location', 'track');
+  const canTrack = canView('user_tracking');
 
   const load = useCallback(async () => {
     if (!user) return;

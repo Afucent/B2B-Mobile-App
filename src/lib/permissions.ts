@@ -20,7 +20,7 @@ export const MODULE_LABELS: Record<string, string> = {
   visit_history: 'Visit History',
   field_visits: 'Field Visits',
   my_attendance_leave: 'My Attendance & Leave',
-  user_tracking: 'User Tracking',
+  user_tracking: 'Employee start & end location',
   leave: 'Leave (legacy)',
   rbac: 'Roles (legacy)',
 };
@@ -159,28 +159,18 @@ export const PERMISSION_EQUIVALENTS: Record<string, Array<[string, string]>> = {
   'user_tracking:read': [
     ['user_tracking', 'read'],
     ['user_tracking', 'create'],
-    ['live_location', 'create'],
-    ['live_location', 'track'],
-    ['attendance', 'location_track'],
   ],
-  'user_tracking:create': [
-    ['user_tracking', 'create'],
-    ['live_location', 'create'],
-    ['live_location', 'track'],
-    ['attendance', 'location_track'],
-  ],
+  'user_tracking:create': [['user_tracking', 'create']],
   'live_location:create': [
     ['live_location', 'create'],
     ['live_location', 'track'],
     ['attendance', 'location_track'],
-    ['user_tracking', 'create'],
   ],
   'live_location:read': [['live_location', 'read']],
   'live_location:track': [
     ['live_location', 'track'],
     ['live_location', 'create'],
     ['attendance', 'location_track'],
-    ['user_tracking', 'create'],
   ],
   'role_library:read': [
     ['role_library', 'read'],

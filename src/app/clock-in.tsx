@@ -8,9 +8,9 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
 import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
-import { clockIn, getTodayStatus } from '@/lib/api/attendance';
+import { executeClockIn } from '@/lib/attendanceActions';
+import { getTodayStatus } from '@/lib/api/attendance';
 import { formatClock, formatLongDate } from '@/lib/format';
-import { requestLocation } from '@/lib/location';
 
 export default function ClockInScreen() {
   const insets = useSafeAreaInsets();
@@ -37,9 +37,20 @@ export default function ClockInScreen() {
     setLoading(true);
     setError('');
     try {
-      // GPS is required by the attendance API, but this screen is attendance-only.
-      const loc = await requestLocation();
-      const record = await clockIn(loc.latitude, loc.longitude);
+      const result = await executeClockIn();
+      if (!result.ok) {
+        if (result.error.kind === 'navigate') {
+          router.replace(result.error.href);
+          return;
+        }
+        if (result.error.kind === 'already_clocked_in') {
+          router.replace('/(app)/clock');
+          return;
+        }
+        setError(result.error.kind === 'message' ? result.error.message : 'Clock-in failed.');
+        return;
+      }
+      const { record, loc } = result.data;
       router.replace({
         pathname: '/clock-in-confirmed',
         params: {
@@ -48,22 +59,6 @@ export default function ClockInScreen() {
           accuracy: String(loc.accuracy ?? 3),
         },
       });
-    } catch (err) {
-      const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : '';
-      if (code === 'services_off') {
-        router.replace({ pathname: '/location-required', params: { reason: 'off', next: '/clock-in' } });
-        return;
-      }
-      if (code === 'denied') {
-        router.replace({ pathname: '/location-required', params: { reason: 'denied', next: '/clock-in' } });
-        return;
-      }
-      const message = err instanceof Error ? err.message : 'Clock-in failed.';
-      if (message.toLowerCase().includes('already clocked in')) {
-        router.replace('/(app)/clock');
-        return;
-      }
-      setError(message);
     } finally {
       setLoading(false);
     }

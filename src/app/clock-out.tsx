@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import FieldOpsSettingsSummary from '@/components/FieldOpsSettingsSummary';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -9,17 +10,15 @@ import { Colors, Radius } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
 import { useTracking } from '@/context/TrackingContext';
+import { executeClockOut } from '@/lib/attendanceActions';
 import {
-  clockOut,
   getEmployeeLiveDetail,
   getTodayStatus,
   type AttendanceRecord,
+  type EmployeeLiveDetail,
 } from '@/lib/api/attendance';
-import { getMyVisits } from '@/lib/api/visits';
-import { forceStopBackgroundLocation } from '@/lib/backgroundLocation';
+import { getMyVisits, type FieldVisit } from '@/lib/api/visits';
 import { durationLabel, formatClock } from '@/lib/format';
-import { requestLocation } from '@/lib/location';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function hoursFromRange(inTime?: string | null, outTime?: string | null) {
   if (!inTime || !outTime) return 0;
@@ -36,6 +35,7 @@ export default function ClockOutScreen() {
   const { user } = useAuth();
   const { settings, loading: settingsLoading } = useFieldOpsSettings();
   const { refreshStatus } = useTracking();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -56,16 +56,36 @@ export default function ClockOutScreen() {
     setLoading(true);
     setError('');
     try {
-      const loc = await requestLocation();
-      // Capture shift stats while still clocked in — live detail may clear after clock-out.
-      const [live, visits] = await Promise.all([
-        user?.id ? getEmployeeLiveDetail(user.id).catch(() => null) : Promise.resolve(null),
-        getMyVisits().catch(() => null),
-      ]);
-      const closed = await clockOut(loc.latitude, loc.longitude);
-      await forceStopBackgroundLocation().catch(() => undefined);
+      const captured: {
+        live: EmployeeLiveDetail | null;
+        visits: { items: FieldVisit[]; total: number } | null;
+      } = { live: null, visits: null };
+
+      const result = await executeClockOut({
+        beforeCommit: async () => {
+          // Capture shift stats while still clocked in — live detail may clear after clock-out.
+          const [liveDetail, visitResponse] = await Promise.all([
+            user?.id ? getEmployeeLiveDetail(user.id).catch(() => null) : Promise.resolve(null),
+            getMyVisits().catch(() => null),
+          ]);
+          captured.live = liveDetail;
+          captured.visits = visitResponse;
+        },
+      });
+
+      if (!result.ok) {
+        if (result.error.kind === 'navigate') {
+          router.replace(result.error.href);
+          return;
+        }
+        setError(result.error.kind === 'message' ? result.error.message : 'Clock-out failed.');
+        return;
+      }
+
       await refreshStatus();
 
+      const { closed } = result.data;
+      const { live, visits } = captured;
       const outTime = closed.clock_out_time ?? new Date().toISOString();
       const hours =
         closed.working_hours ?? hoursFromRange(closed.clock_in_time, outTime);
@@ -91,25 +111,10 @@ export default function ClockOutScreen() {
           lock: closed.id.slice(0, 6).toUpperCase(),
         },
       });
-    } catch (err) {
-      const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : '';
-      if (code === 'services_off') {
-        router.replace({ pathname: '/location-required', params: { reason: 'off', next: '/clock-out' } });
-        return;
-      }
-      if (code === 'denied') {
-        router.replace({
-          pathname: '/location-required',
-          params: { reason: 'denied', next: '/clock-out' },
-        });
-        return;
-      }
-      setError(err instanceof Error ? err.message : 'Clock-out failed.');
     } finally {
       setLoading(false);
     }
   }
-  const insets = useSafeAreaInsets();
 
   return (
     <View style={[styles.flex, { paddingBottom: insets.bottom + 20 }]}>
