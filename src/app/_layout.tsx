@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider } from '@/context/AuthContext';
 import { FieldOpsSettingsProvider } from '@/context/FieldOpsSettingsContext';
+import { PushNotificationProvider } from '@/context/PushNotificationProvider';
 import { TrackingProvider } from '@/context/TrackingContext';
 import { ToastProvider } from '@/components/ui/Toast';
 
@@ -17,6 +18,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AuthProvider>
           <ToastProvider>
+          <PushNotificationProvider>
           <FieldOpsSettingsProvider>
             <TrackingProvider>
             <StatusBar style="dark" />
@@ -55,6 +57,7 @@ export default function RootLayout() {
             </Stack>
             </TrackingProvider>
           </FieldOpsSettingsProvider>
+          </PushNotificationProvider>
           </ToastProvider>
         </AuthProvider>
       </SafeAreaProvider>

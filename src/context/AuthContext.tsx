@@ -127,6 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { forceStopBackgroundLocation } = await import('@/lib/backgroundLocation');
     await forceStopBackgroundLocation().catch(() => undefined);
     await clearGpsLogIdentity().catch(() => undefined);
+    const { clearPushRegistration } = await import('@/lib/pushNotifications');
+    await clearPushRegistration().catch(() => undefined);
     await clearToken();
     setUser(null);
     setStatus('signedOut');

@@ -44,6 +44,20 @@ export function deleteNotification(id: string) {
   });
 }
 
+export function registerPushToken(token: string, platform: string) {
+  return apiRequest<{ message: string }>('/platform/notifications/device-token', {
+    method: 'POST',
+    body: { token, platform },
+  });
+}
+
+export function unregisterPushToken(token: string) {
+  return apiRequest<{ message: string }>('/platform/notifications/device-token/unregister', {
+    method: 'POST',
+    body: { token },
+  });
+}
+
 /** Resolve an Expo Router path from notification entity / metadata. */
 export function resolveNotificationRoute(item: AppNotification): string | null {
   const metaPath = item.metadata?.mobile_path;
