@@ -98,24 +98,18 @@ const FIELD_LINKS: TabNavLink[] = [
     visible: (ctx) => ctx.canView('visit_assign') || ctx.canCreate('visit_assign'),
   },
   {
-    title: 'Visits',
-    subtitle: 'Today’s assigned visits — complete with notes & photo',
+    title: 'My Visits',
+    subtitle: 'Your assigned visits — check-in / complete with notes & photo',
     href: '/(app)/visits',
     module: 'field_visits',
-    visible: (ctx) =>
-      ctx.canView('field_visits') ||
-      ctx.canCreate('field_visits') ||
-      ctx.canView('visit_history'),
+    visible: (ctx) => ctx.canView('field_visits') || ctx.canCreate('field_visits'),
   },
   {
     title: 'Visit history',
     subtitle: 'Completed visits by employee',
     href: '/visit-history',
     module: 'visit_history',
-    visible: (ctx) =>
-      ctx.canView('visit_history') ||
-      ctx.canView('field_visits') ||
-      ctx.canCreate('field_visits'),
+    visible: (ctx) => ctx.canView('visit_history'),
   },
   {
     title: 'Live tracking',

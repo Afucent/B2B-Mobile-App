@@ -22,8 +22,9 @@ import { useTracking } from '@/context/TrackingContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useAppRefresh } from '@/hooks/useAppRefresh';
 import {
+  CLOCK_RETURN,
   executeClockIn,
-  executeClockOut,
+  executeClockOutToComplete,
   executeEndTracking,
   executeStartTracking,
   gateAttendanceLocation,
@@ -181,9 +182,9 @@ function ClockContent() {
 
   const shiftLabel = formatShiftRange(settings);
 
-  async function withGate(next: string, action: BusyAction, run: () => Promise<void>) {
+  async function withGate(action: BusyAction, run: () => Promise<void>) {
     if (busyRef.current) return;
-    const block = await gateAttendanceLocation(next);
+    const block = await gateAttendanceLocation(CLOCK_RETURN);
     if (block) {
       router.push(block as Href);
       return;
@@ -199,8 +200,8 @@ function ClockContent() {
   }
 
   async function onClockIn() {
-    await withGate('/clock-in', 'clock-in', async () => {
-      const result = await executeClockIn();
+    await withGate('clock-in', async () => {
+      const result = await executeClockIn({ returnTo: CLOCK_RETURN });
       if (!result.ok) {
         if (result.error.kind === 'already_clocked_in') {
           await refreshStatus();
@@ -214,8 +215,11 @@ function ClockContent() {
   }
 
   async function onClockOut() {
-    await withGate('/clock-out', 'clock-out', async () => {
-      const result = await executeClockOut();
+    await withGate('clock-out', async () => {
+      const result = await executeClockOutToComplete({
+        userId: user?.id,
+        returnTo: CLOCK_RETURN,
+      });
       if (!result.ok) {
         handleActionFailure(result.error, 'Clock Out');
         await refreshStatus();
@@ -230,8 +234,8 @@ function ClockContent() {
       Alert.alert('Start Tracking', 'Clock in first, then start live tracking.');
       return;
     }
-    await withGate('/start-tracking', 'start-tracking', async () => {
-      const result = await executeStartTracking(pingMinutes);
+    await withGate('start-tracking', async () => {
+      const result = await executeStartTracking(pingMinutes, null, CLOCK_RETURN);
       if (!result.ok) {
         await refreshStatus();
         handleActionFailure(result.error, 'Start Tracking');
@@ -242,8 +246,8 @@ function ClockContent() {
   }
 
   async function onEndTracking() {
-    await withGate('/start-tracking', 'end-tracking', async () => {
-      const result = await executeEndTracking();
+    await withGate('end-tracking', async () => {
+      const result = await executeEndTracking(null, CLOCK_RETURN);
       if (!result.ok) {
         await refreshStatus();
         handleActionFailure(result.error, 'End Tracking');

@@ -52,12 +52,11 @@ export default function HomeScreen() {
     timeZone: 'Asia/Kolkata',
   }).format(new Date());
 
-  // Any role that can load visits via field_visits or visit_history APIs.
+  // Self Visit (field_visits) controls My Visits list / complete flow.
   const canViewVisits =
     canView('field_visits') ||
     canCreate('field_visits') ||
-    canView('visit_history') ||
-    showMyAttendanceLeave;
+    canView('visit_history');
 
 
   useEffect(() => {

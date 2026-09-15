@@ -8,7 +8,7 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
 import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
-import { executeClockIn } from '@/lib/attendanceActions';
+import { executeClockIn, CLOCK_RETURN } from '@/lib/attendanceActions';
 import { getTodayStatus } from '@/lib/api/attendance';
 import { formatClock, formatLongDate } from '@/lib/format';
 
@@ -28,7 +28,7 @@ export default function ClockInScreen() {
     void (async () => {
       const status = await getTodayStatus().catch(() => null);
       if (status?.is_clocked_in) {
-        router.replace('/(app)/clock');
+        router.replace(CLOCK_RETURN);
       }
     })();
   }, []);
@@ -37,14 +37,14 @@ export default function ClockInScreen() {
     setLoading(true);
     setError('');
     try {
-      const result = await executeClockIn();
+      const result = await executeClockIn({ returnTo: CLOCK_RETURN });
       if (!result.ok) {
         if (result.error.kind === 'navigate') {
           router.replace(result.error.href);
           return;
         }
         if (result.error.kind === 'already_clocked_in') {
-          router.replace('/(app)/clock');
+          router.replace(CLOCK_RETURN);
           return;
         }
         setError(result.error.kind === 'message' ? result.error.message : 'Clock-in failed.');

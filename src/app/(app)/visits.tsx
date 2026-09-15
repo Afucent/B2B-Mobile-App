@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { DateField } from '@/components/ui/DateField';
+import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
@@ -20,6 +21,14 @@ function shiftDay(day: string, delta: number) {
 }
 
 export default function VisitsScreen() {
+  return (
+    <RequireModuleAccess module="field_visits" allowCreate>
+      <VisitsContent />
+    </RequireModuleAccess>
+  );
+}
+
+function VisitsContent() {
   const { user } = useAuth();
   const { canView, canCreate } = usePermissions();
   const [day, setDay] = useState(() => ymd(new Date()));
@@ -66,7 +75,7 @@ export default function VisitsScreen() {
 
   return (
     <View style={styles.flex}>
-      <ScreenHeader title="Visits" onBack={() => router.back()} />
+      <ScreenHeader title="My Visits" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.sub}>
           Tap a dealer to see location, then Check-in / Check-out. Completed visits are in history.

@@ -40,6 +40,8 @@ const MODULE_HINTS: Record<string, string> = {
   live_location: 'Admin live map only (View). Start/End is Employee start & end location',
   my_attendance_leave: 'View = open page · Create = clock in/out + apply leave',
   user_tracking: 'View = Start / End location controls',
+  field_visits: 'View = My Visits · Create = check-in / complete assigned visits',
+  visit_assign: 'Assign dealer visits to employees',
   leave_types: 'Create / Edit / Delete leave type configs',
   team_calendar: 'View-only team leave calendar',
   role_library: 'Create / delete custom roles',

@@ -10,22 +10,9 @@ import { Colors, Radius } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
 import { useTracking } from '@/context/TrackingContext';
-import { executeClockOut } from '@/lib/attendanceActions';
-import {
-  getEmployeeLiveDetail,
-  getTodayStatus,
-  type AttendanceRecord,
-  type EmployeeLiveDetail,
-} from '@/lib/api/attendance';
-import { getMyVisits, type FieldVisit } from '@/lib/api/visits';
+import { CLOCK_RETURN, executeClockOutToComplete } from '@/lib/attendanceActions';
+import { getTodayStatus, type AttendanceRecord } from '@/lib/api/attendance';
 import { durationLabel, formatClock } from '@/lib/format';
-
-function hoursFromRange(inTime?: string | null, outTime?: string | null) {
-  if (!inTime || !outTime) return 0;
-  const ms = new Date(outTime).getTime() - new Date(inTime).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return 0;
-  return Math.round((ms / 3_600_000) * 100) / 100;
-}
 
 export default function ClockOutScreen() {
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
@@ -47,7 +34,7 @@ export default function ClockOutScreen() {
       const status = await getTodayStatus().catch(() => null);
       setRecord(status?.record ?? null);
       if (!status?.is_clocked_in) {
-        router.replace('/(app)/clock');
+        router.replace(CLOCK_RETURN);
       }
     })();
   }, []);
@@ -56,21 +43,9 @@ export default function ClockOutScreen() {
     setLoading(true);
     setError('');
     try {
-      const captured: {
-        live: EmployeeLiveDetail | null;
-        visits: { items: FieldVisit[]; total: number } | null;
-      } = { live: null, visits: null };
-
-      const result = await executeClockOut({
-        beforeCommit: async () => {
-          // Capture shift stats while still clocked in — live detail may clear after clock-out.
-          const [liveDetail, visitResponse] = await Promise.all([
-            user?.id ? getEmployeeLiveDetail(user.id).catch(() => null) : Promise.resolve(null),
-            getMyVisits().catch(() => null),
-          ]);
-          captured.live = liveDetail;
-          captured.visits = visitResponse;
-        },
+      const result = await executeClockOutToComplete({
+        userId: user?.id,
+        returnTo: CLOCK_RETURN,
       });
 
       if (!result.ok) {
@@ -83,34 +58,6 @@ export default function ClockOutScreen() {
       }
 
       await refreshStatus();
-
-      const { closed } = result.data;
-      const { live, visits } = captured;
-      const outTime = closed.clock_out_time ?? new Date().toISOString();
-      const hours =
-        closed.working_hours ?? hoursFromRange(closed.clock_in_time, outTime);
-      const done =
-        visits?.items.filter((v) => v.status.toLowerCase() === 'completed').length ??
-        live?.visits_completed ??
-        0;
-      const assigned =
-        visits?.total ??
-        visits?.items.length ??
-        live?.visits_assigned ??
-        0;
-
-      router.replace({
-        pathname: '/shift-complete',
-        params: {
-          inTime: closed.clock_in_time,
-          outTime,
-          hours: String(hours),
-          distance: String(live?.distance_today_km ?? 0),
-          visitsDone: String(done),
-          visitsAssigned: String(assigned),
-          lock: closed.id.slice(0, 6).toUpperCase(),
-        },
-      });
     } finally {
       setLoading(false);
     }
@@ -158,7 +105,7 @@ function Row({ label, value, accent }: { label: string; value: string; accent?: 
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.background },
-  sheet: { padding: 20, gap: 8, flex: 1 },
+  sheet: { flex: 1, padding: 20, gap: 10 },
   card: {
     borderWidth: 1,
     borderColor: Colors.border,
@@ -166,7 +113,6 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 8,
     backgroundColor: Colors.surface,
-    marginBottom: 8,
   },
   badge: {
     alignSelf: 'flex-start',
@@ -177,10 +123,10 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: '800', color: Colors.heading },
   copy: { color: Colors.muted, fontSize: 13, lineHeight: 18 },
-  summaryTitle: { marginTop: 8, fontWeight: '800', color: Colors.heading },
-  row: { flexDirection: 'row', justifyContent: 'space-between' },
+  summaryTitle: { marginTop: 8, fontWeight: '700', color: Colors.heading },
+  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
   rowLabel: { color: Colors.muted },
   rowValue: { fontWeight: '700', color: Colors.heading },
   accent: { color: Colors.brand },
-  error: { color: Colors.danger },
+  error: { color: Colors.danger, fontSize: 13 },
 });

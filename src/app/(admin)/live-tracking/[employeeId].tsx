@@ -193,6 +193,11 @@ export default function AdminLiveEmployeeScreen() {
               {data!.visits!.map((visit, index) => {
                 const isComplete = (visit.status ?? '').toLowerCase() === 'completed';
                 const label = isComplete ? 'Complete' : 'In Progress';
+                const name =
+                  (visit.dealer_name || '').trim() ||
+                  (visit.store_name || '').trim() ||
+                  'Assigned dealer';
+                const address = (visit.address || '').trim();
                 return (
                 <View
                   key={visit.id}
@@ -201,9 +206,14 @@ export default function AdminLiveEmployeeScreen() {
                     index < data!.visits!.length - 1 && styles.fieldBorder,
                   ]}>
                   <View style={styles.visitHead}>
-                    <Text style={styles.value}>
-                      {visit.store_name || visit.dealer_name || 'Assigned dealer'}
-                    </Text>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={styles.value}>{name}</Text>
+                      {address ? (
+                        <Text style={styles.sub} numberOfLines={2}>
+                          {address}
+                        </Text>
+                      ) : null}
+                    </View>
                     <StatusPill label={label} tone={statusTone(isComplete ? 'completed' : 'in_progress')} />
                   </View>
                 </View>

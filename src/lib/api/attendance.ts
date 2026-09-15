@@ -32,6 +32,8 @@ export interface TodayStatus {
 export interface LiveVisit {
   id: string;
   store_name: string;
+  dealer_name?: string | null;
+  address?: string | null;
   started_at: string | null;
   duration_label: string;
   status: 'completed' | 'in_progress' | string;

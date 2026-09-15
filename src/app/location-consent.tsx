@@ -21,7 +21,7 @@ export default function LocationConsentScreen() {
   const { next } = useLocalSearchParams<{ next?: string }>();
   const [consent, setConsent] = useState(true);
   const [loading, setLoading] = useState(false);
-  const target = next || '/clock-in';
+  const target = next || '/(app)';
 
   async function onAllow() {
     if (!consent) return;

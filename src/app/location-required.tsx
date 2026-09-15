@@ -4,16 +4,18 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { LinkButton } from '@/components/ui/LinkButton';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { useContentBottomInset } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
 import { continueLocationAction } from '@/lib/locationGate';
 import { openDeviceSettings } from '@/lib/location';
 
 export default function LocationRequiredScreen() {
+  const bottomInset = useContentBottomInset(24);
   const { reason, next } = useLocalSearchParams<{ reason?: string; next?: string }>();
   const background = reason === 'background';
   const denied = reason === 'denied' || background;
-  const target = next || '/clock-in';
+  const target = next || '/(app)';
 
   const steps = denied
     ? [
@@ -27,8 +29,9 @@ export default function LocationRequiredScreen() {
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Location Required" onBack={() => router.back()} />
-      <View style={styles.body}>
+      <View style={[styles.body, { paddingBottom: bottomInset }]}>
         <View style={[styles.banner, denied ? styles.bannerWarn : styles.bannerOff]}>
+
           <Ionicons name="warning" size={18} color={denied ? Colors.pendingText : Colors.pendingText} />
           <View style={{ flex: 1 }}>
             <Text style={styles.bannerTitle}>
@@ -84,7 +87,8 @@ export default function LocationRequiredScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { flex: 1, padding: 16, gap: 14, paddingBottom: 24 },
+  body: { flex: 1, padding: 16, gap: 14 },
+
   banner: {
     borderRadius: Radius.lg,
     padding: 14,

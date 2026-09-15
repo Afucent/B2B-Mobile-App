@@ -9,8 +9,10 @@ import { useAuth } from '@/context/AuthContext';
 import { useTracking } from '@/context/TrackingContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
+  CLOCK_RETURN,
+  HOME_RETURN,
   executeClockIn,
-  executeClockOut,
+  executeClockOutToComplete,
   executeEndTracking,
   executeStartTracking,
   gateAttendanceLocation,
@@ -81,11 +83,10 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
 
   // Matrix: My Attendance & Leave → Create = clock in/out (+ apply leave elsewhere).
   const canUseClock = canCreate('my_attendance_leave');
-  // Employee roles often have visit_history / attendance but not field_visits.
+  // Employee Self Visit (field_visits): own assigned visits via /visits/my.
   const canUseMyVisitsApi = canView('field_visits') || canCreate('field_visits');
   const canUseHistoryApi = canView('visit_history');
-  const canViewVisits =
-    canUseMyVisitsApi || canUseHistoryApi || showMyAttendanceLeave;
+  const canViewVisits = canUseMyVisitsApi || canUseHistoryApi;
   // Backend: POST /attendance/location/start|end requires user_tracking:read
   // (matrix: "Employee start & end location" View) — same as web canView('user_tracking').
   const canTrack = canView('user_tracking');
@@ -149,9 +150,10 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
   const onDuty = isClockedIn;
   const clockTime = today?.record?.clock_in_time ? formatClock(today.record.clock_in_time) : null;
 
-  async function withGate(next: string, action: BusyAction, run: () => Promise<void>) {
+  async function withGate(action: BusyAction, run: () => Promise<void>) {
     if (busyRef.current) return;
-    const block = await gateAttendanceLocation(next);
+    // Return to Home after location consent — do not bounce to Clock tab.
+    const block = await gateAttendanceLocation(HOME_RETURN);
     if (block) {
       router.push(block as Href);
       return;
@@ -167,8 +169,8 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
   }
 
   async function onClockIn() {
-    await withGate('/clock-in', 'clock-in', async () => {
-      const result = await executeClockIn();
+    await withGate('clock-in', async () => {
+      const result = await executeClockIn({ returnTo: HOME_RETURN });
       if (!result.ok) {
         if (result.error.kind === 'already_clocked_in') {
           await load();
@@ -184,15 +186,17 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
   }
 
   async function onClockOut() {
-    await withGate('/clock-out', 'clock-out', async () => {
-      const result = await executeClockOut();
+    await withGate('clock-out', async () => {
+      const result = await executeClockOutToComplete({
+        userId: user?.id,
+        returnTo: HOME_RETURN,
+      });
       if (!result.ok) {
         handleActionFailure(result.error, 'Clock Out');
         await load();
         return;
       }
       await refreshStatus();
-      await load();
     });
   }
 
@@ -201,8 +205,8 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
       Alert.alert('Start Tracking', 'Clock in first, then start live tracking.');
       return;
     }
-    await withGate('/start-tracking', 'start-tracking', async () => {
-      const result = await executeStartTracking(pingMinutes);
+    await withGate('start-tracking', async () => {
+      const result = await executeStartTracking(pingMinutes, null, HOME_RETURN);
       if (!result.ok) {
         await refreshStatus();
         await load();
@@ -215,8 +219,8 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
   }
 
   async function onEndTracking() {
-    await withGate('/start-tracking', 'end-tracking', async () => {
-      const result = await executeEndTracking();
+    await withGate('end-tracking', async () => {
+      const result = await executeEndTracking(null, HOME_RETURN);
       if (!result.ok) {
         await load();
         handleActionFailure(result.error, 'End Tracking');
@@ -306,7 +310,7 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
       {canViewVisits ? (
         <View style={styles.todayCard}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Today&apos;s Visits</Text>
+            <Text style={styles.sectionTitle}>My Visits</Text>
             <View style={styles.assignedBadge}>
               <Text style={styles.assignedBadgeText}>
                 {completedVisits} of {assignedCount} assigned
@@ -320,7 +324,8 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
               {todayVisits.map((visit) => {
                 const done = isCompleted(visit);
                 const statusLabel = visitStatusLabel(visit);
-                const address = visitAddress(visit) || visit.dealer_name || 'Address pending';
+                const name = (visit.dealer_name || '').trim() || 'Dealer';
+                const address = visitAddress(visit);
                 return (
                   <Pressable
                     key={visit.id}
@@ -344,9 +349,16 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
                     />
                     <View style={styles.visitInfo}>
                       <View style={styles.todayVisitHead}>
-                        <Text style={styles.visitName} numberOfLines={2}>
-                          {address}
-                        </Text>
+                        <View style={styles.visitTextCol}>
+                          <Text style={styles.visitName} numberOfLines={1}>
+                            {name}
+                          </Text>
+                          {address ? (
+                            <Text style={styles.visitAddress} numberOfLines={2}>
+                              {address}
+                            </Text>
+                          ) : null}
+                        </View>
                         <Text
                           style={[
                             styles.statusLabel,
@@ -531,9 +543,10 @@ const styles = StyleSheet.create({
   statusDotComplete: { backgroundColor: '#16A34A' },
   visitInfo: { flex: 1, gap: 3 },
   todayVisitHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  visitTextCol: { flex: 1, gap: 2 },
   visitName: { flex: 1, color: '#31545A', fontSize: 13, fontWeight: '800' },
-  visitAddress: { color: '#809294', fontSize: 11 },
-  statusLabel: { fontSize: 11, fontWeight: '700' },
+  visitAddress: { color: '#809294', fontSize: 11, lineHeight: 15 },
+  statusLabel: { fontSize: 11, fontWeight: '700', marginTop: 1 },
   statusProgress: { color: '#1D4ED8' },
   statusComplete: { color: '#15803D' },
   emptyText: { color: Colors.muted, fontSize: 13, paddingVertical: 8 },

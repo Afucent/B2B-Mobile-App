@@ -1,10 +1,10 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Stamp } from '@/components/ui/Stamp';
-import { Colors, Radius } from '@/constants/theme';
+import { Colors, Radius, Spacing } from '@/constants/theme';
 import { formatClock, formatDate, hoursToLabel } from '@/lib/format';
 
 function paramValue(value?: string | string[]) {
@@ -46,11 +46,16 @@ export default function ShiftCompleteScreen() {
   const progress = assigned > 0 ? Math.round((done / assigned) * 100) : 0;
   const out = outTime ?? new Date().toISOString();
   const distance = Number(distanceParam ?? 0) || 0;
+  const bottomPad = Math.max(insets.bottom, Spacing.md) + Spacing.lg;
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: Math.max(insets.top, Spacing.md) + Spacing.lg }]}>
       <Text style={styles.nav}>Shift Completed</Text>
-      <View style={styles.body}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.body}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled">
         <Stamp title="SHIFT COMPLETE" subtitle={`●  ${formatDate(out).toUpperCase()}  ·  ${formatClock(out)}`} />
         <Text style={styles.caption}>Total Working Hours</Text>
         <Text style={styles.hours}>{hours}</Text>
@@ -69,8 +74,8 @@ export default function ShiftCompleteScreen() {
           Clocked in: {formatClock(inTime)} · Clocked out: {formatClock(out)}
         </Text>
         <Text style={styles.lock}>Digital signature lock reference: #{lock ?? 'A1B2C3'}</Text>
-      </View>
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
+      </ScrollView>
+      <View style={[styles.footer, { paddingBottom: bottomPad }]}>
         <PrimaryButton label="Back to Dashboard" onPress={() => router.replace('/(app)')} />
       </View>
     </View>
@@ -87,9 +92,10 @@ function Row({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: Colors.background, paddingTop: 56 },
-  nav: { textAlign: 'center', fontSize: 18, fontWeight: '700' },
-  body: { flex: 1, paddingHorizontal: 24, paddingTop: 40, gap: 8 },
+  screen: { flex: 1, backgroundColor: Colors.background },
+  nav: { textAlign: 'center', fontSize: 18, fontWeight: '700', marginBottom: Spacing.sm },
+  scroll: { flex: 1 },
+  body: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: Spacing.md, gap: 8 },
   caption: { textAlign: 'center', color: Colors.muted, marginTop: 28 },
   hours: { textAlign: 'center', fontSize: 40, fontWeight: '800', color: Colors.heading },
   card: {
@@ -109,5 +115,11 @@ const styles = StyleSheet.create({
   progressPct: { textAlign: 'right', color: Colors.muted, fontSize: 12 },
   meta: { textAlign: 'center', color: Colors.muted, marginTop: 16, fontSize: 13 },
   lock: { textAlign: 'center', color: Colors.muted, fontSize: 12 },
-  footer: { padding: 24 },
+  footer: {
+    paddingHorizontal: 24,
+    paddingTop: Spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border,
+    backgroundColor: Colors.background,
+  },
 });

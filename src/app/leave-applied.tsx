@@ -4,12 +4,14 @@ import { StyleSheet, Text, View } from 'react-native';
 import { OutlineButton } from '@/components/ui/OutlineButton';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { useContentBottomInset } from '@/components/ui/SafeScreen';
 import { Stamp } from '@/components/ui/Stamp';
 import { Colors, Radius } from '@/constants/theme';
 import { formatClock, formatDate } from '@/lib/format';
 import { displayYmdRange, leaveStatusMeta } from '@/lib/leaveUi';
 
 export default function LeaveAppliedScreen() {
+  const bottomInset = useContentBottomInset(24);
   const params = useLocalSearchParams<{
     type?: string;
     from?: string;
@@ -26,7 +28,7 @@ export default function LeaveAppliedScreen() {
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Leave Applied" onBack={() => router.replace('/(app)/clock')} />
-      <View style={styles.body}>
+      <View style={[styles.body, { paddingBottom: bottomInset }]}>
         <Stamp
           title="LEAVE APPLIED"
           subtitle={`●  ${stampDate.toUpperCase()}  ·  ${stampTime}`}
@@ -67,7 +69,7 @@ function Row({ label, value, accent }: { label: string; value: string; accent?: 
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { flex: 1, padding: 16, paddingBottom: 24, gap: 16 },
+  body: { flex: 1, padding: 16, gap: 16 },
   card: {
     backgroundColor: Colors.background,
     borderRadius: Radius.lg,

@@ -18,7 +18,7 @@ export const MODULE_LABELS: Record<string, string> = {
   live_location: 'Live Location Tracking',
   visit_assign: 'Visit Assign',
   visit_history: 'Visit History',
-  field_visits: 'Field Visits',
+  field_visits: 'Self Visit',
   my_attendance_leave: 'My Attendance & Leave',
   user_tracking: 'Employee start & end location',
   leave: 'Leave (legacy)',
@@ -40,8 +40,8 @@ export const MATRIX_MODULE_ORDER = [
   'team_calendar',
   'live_location',
   'visit_assign',
-  'visit_history',
   'field_visits',
+  'visit_history',
   'my_attendance_leave',
   'user_tracking',
 ] as const;
