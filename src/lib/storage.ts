@@ -13,8 +13,18 @@ export const SECURE_STORE_OPTIONS: SecureStore.SecureStoreOptions = {
 /** In-process cache so headless GPS tasks still auth while the FGS keeps the app alive. */
 let tokenMemory: string | null | undefined;
 
+function canUseLocalStorage() {
+  return (
+    Platform.OS === 'web' &&
+    typeof globalThis !== 'undefined' &&
+    typeof globalThis.localStorage !== 'undefined'
+  );
+}
+
 async function setItem(key: string, value: string) {
   if (Platform.OS === 'web') {
+    // Expo web SSR runs in Node — localStorage does not exist there.
+    if (!canUseLocalStorage()) return;
     localStorage.setItem(key, value);
     return;
   }
@@ -23,6 +33,7 @@ async function setItem(key: string, value: string) {
 
 async function getItem(key: string) {
   if (Platform.OS === 'web') {
+    if (!canUseLocalStorage()) return null;
     return localStorage.getItem(key);
   }
   try {
@@ -34,6 +45,7 @@ async function getItem(key: string) {
 
 async function deleteItem(key: string) {
   if (Platform.OS === 'web') {
+    if (!canUseLocalStorage()) return;
     localStorage.removeItem(key);
     return;
   }

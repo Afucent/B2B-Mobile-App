@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/Toast';
 import { APP_VERSION, Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useAppRefresh } from '@/hooks/useAppRefresh';
 import { canViewDashboard } from '@/lib/tabNavigation';
 import { firstName, greetingForNow, initials } from '@/lib/format';
 import { getUnreadNotificationCount } from '@/lib/api/notifications';
@@ -22,11 +23,17 @@ export default function HomeScreen() {
   const { user, refresh } = useAuth();
   const { showToast } = useToast();
   const { isOrgAdmin,isEmployee, showMyAttendanceLeave, hasAnyAdminRead, has, canView, canCreate } = usePermissions();
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [passwordModalDismissed, setPasswordModalDismissed] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const name = user?.name ?? 'there';
+
+  const loadUnread = useCallback(async () => {
+    await getUnreadNotificationCount()
+      .then((data) => setUnreadNotifications(data.unread_count))
+      .catch(() => setUnreadNotifications(0));
+  }, []);
+
+  const { refreshing, refreshKey, onRefresh } = useAppRefresh(loadUnread);
 
   const showDashboard = canViewDashboard({
     isOrgAdmin,
@@ -61,7 +68,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    const loadUnread = () => {
+    const tick = () => {
       void getUnreadNotificationCount()
         .then((data) => {
           if (!cancelled) setUnreadNotifications(data.unread_count);
@@ -70,8 +77,8 @@ export default function HomeScreen() {
           if (!cancelled) setUnreadNotifications(0);
         });
     };
-    loadUnread();
-    const id = setInterval(loadUnread, 15_000);
+    tick();
+    const id = setInterval(tick, 15_000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -82,16 +89,6 @@ export default function HomeScreen() {
     await refresh();
     showToast('Password changed successfully');
   }
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    setRefreshKey((k) => k + 1);
-    await getUnreadNotificationCount()
-      .then((data) => setUnreadNotifications(data.unread_count))
-      .catch(() => undefined);
-    await new Promise((r) => setTimeout(r, 400));
-    setRefreshing(false);
-  }, []);
 
   return (
     <View style={styles.flex}>

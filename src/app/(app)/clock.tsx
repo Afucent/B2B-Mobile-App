@@ -1,7 +1,15 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { router, type Href } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import {
+  Alert,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,12 +18,20 @@ import RequireEmployeeTab from '@/components/RequireEmployeeTab';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
+import { useTracking } from '@/context/TrackingContext';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useAppRefresh } from '@/hooks/useAppRefresh';
+import {
+  executeClockIn,
+  executeClockOut,
+  executeEndTracking,
+  executeStartTracking,
+  gateAttendanceLocation,
+  type AttendanceActionFailure,
+} from '@/lib/attendanceActions';
 import {
   getMyHistory,
-  getTodayStatus,
   type AttendanceRecord,
-  type TodayStatus,
 } from '@/lib/api/attendance';
 import { getLeaveBalance, getMyLeaveRequests, type LeaveRequest } from '@/lib/api/leave';
 import {
@@ -24,12 +40,24 @@ import {
 } from '@/lib/api/leaveAdmin';
 import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
 import { formatShiftRange } from '@/lib/fieldOpsSettingsUi';
-import { employeeCode, formatClock, formatDate } from '@/lib/format';
+import { durationLabel, employeeCode, formatClock, formatDate } from '@/lib/format';
 import { displayYmdRange, leaveStatusMeta, ymd } from '@/lib/leaveUi';
-import { routeForLocationAction } from '@/lib/locationGate';
 import { isFieldTrackingEnabled } from '@/lib/permissions';
 import { canAccessLeaveManagement } from '@/lib/tabNavigation';
 import { getMissedClockOut, saveMissedClockOut } from '@/lib/visits';
+
+type BusyAction = 'clock-in' | 'clock-out' | 'start-tracking' | 'end-tracking' | null;
+
+function handleActionFailure(error: AttendanceActionFailure, fallbackTitle: string) {
+  if (error.kind === 'navigate') {
+    router.push(error.href);
+    return;
+  }
+  if (error.kind === 'already_clocked_in') {
+    return;
+  }
+  Alert.alert(fallbackTitle, error.message);
+}
 
 export default function ClockScreen() {
   return (
@@ -43,6 +71,14 @@ function ClockContent() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const { user } = useAuth();
+  const {
+    today,
+    isClockedIn,
+    trackingActive,
+    pingMinutes,
+    refreshStatus,
+  } = useTracking();
+  const { refreshing, onRefresh } = useAppRefresh();
   const { isOrgAdmin, showMyAttendanceLeave, hasAnyAdminRead, has, canView, canCreate } =
     usePermissions();
   const permCtx = {
@@ -54,7 +90,8 @@ function ClockContent() {
     fieldTrackingEnabled: isFieldTrackingEnabled(user?.organization?.enabled_modules),
   };
   const showLeaveManagement = canAccessLeaveManagement(permCtx);
-  const [today, setToday] = useState<TodayStatus | null>(null);
+  // Matrix: My Attendance & Leave → Create = clock in/out (+ apply leave).
+  const canUseClock = canCreate('my_attendance_leave');
   const [leaveDays, setLeaveDays] = useState(0);
   const [requests, setRequests] = useState<
     Array<{
@@ -65,14 +102,20 @@ function ClockContent() {
     }>
   >([]);
   const [missedOpen, setMissedOpen] = useState(false);
+  const [busyAction, setBusyAction] = useState<BusyAction>(null);
+  const busyRef = useRef(false);
   const { settings, refreshSettings } = useFieldOpsSettings();
 
   const canTrack = canView('user_tracking');
+  const onDuty = isClockedIn;
+  const record: AttendanceRecord | null = today?.record ?? null;
 
   const load = useCallback(async () => {
     if (!user) return;
+    if (canUseClock) {
+      await refreshStatus().catch(() => undefined);
+    }
     if (isOrgAdmin) {
-      setToday(null);
       setMissedOpen(false);
       const adminReqs = await listLeaveRequestsAdmin().catch(() => ({ items: [] as LeaveRequestAdmin[] }));
       setRequests(
@@ -88,8 +131,6 @@ function ClockContent() {
       );
       return;
     }
-    const status = await getTodayStatus().catch(() => null);
-    setToday(status);
     const balance = await getLeaveBalance().catch(() => null);
     setLeaveDays(balance?.items.reduce((sum, item) => sum + (item.balance || 0), 0) ?? 0);
     const mine = await getMyLeaveRequests().catch(() => [] as LeaveRequest[]);
@@ -129,7 +170,7 @@ function ClockContent() {
         setMissedOpen(false);
       }
     }
-  }, [user, isOrgAdmin, settings?.shift_end_time]);
+  }, [user, isOrgAdmin, settings?.shift_end_time, refreshStatus, canUseClock]);
 
   useFocusEffect(
     useCallback(() => {
@@ -138,31 +179,91 @@ function ClockContent() {
     }, [load, refreshSettings]),
   );
 
-  const onDuty = Boolean(today?.is_clocked_in);
-  const record: AttendanceRecord | null = today?.record ?? null;
-  const trackingActive = Boolean(today?.tracking_active);
   const shiftLabel = formatShiftRange(settings);
 
-  async function goWithLocation(next: '/clock-in' | '/clock-out' | '/start-tracking') {
-    const block = await routeForLocationAction(next);
-    router.push(block ?? next);
+  async function withGate(next: string, action: BusyAction, run: () => Promise<void>) {
+    if (busyRef.current) return;
+    const block = await gateAttendanceLocation(next);
+    if (block) {
+      router.push(block as Href);
+      return;
+    }
+    busyRef.current = true;
+    setBusyAction(action);
+    try {
+      await run();
+    } finally {
+      busyRef.current = false;
+      setBusyAction(null);
+    }
   }
 
-  async function onOpenTracking() {
-    if (!onDuty) return;
-    await goWithLocation('/start-tracking');
+  async function onClockIn() {
+    await withGate('/clock-in', 'clock-in', async () => {
+      const result = await executeClockIn();
+      if (!result.ok) {
+        if (result.error.kind === 'already_clocked_in') {
+          await refreshStatus();
+          return;
+        }
+        handleActionFailure(result.error, 'Clock In');
+        return;
+      }
+      await refreshStatus();
+    });
+  }
+
+  async function onClockOut() {
+    await withGate('/clock-out', 'clock-out', async () => {
+      const result = await executeClockOut();
+      if (!result.ok) {
+        handleActionFailure(result.error, 'Clock Out');
+        await refreshStatus();
+        return;
+      }
+      await refreshStatus();
+    });
+  }
+
+  async function onStartTracking() {
+    if (!onDuty) {
+      Alert.alert('Start Tracking', 'Clock in first, then start live tracking.');
+      return;
+    }
+    await withGate('/start-tracking', 'start-tracking', async () => {
+      const result = await executeStartTracking(pingMinutes);
+      if (!result.ok) {
+        await refreshStatus();
+        handleActionFailure(result.error, 'Start Tracking');
+        return;
+      }
+      await refreshStatus();
+    });
+  }
+
+  async function onEndTracking() {
+    await withGate('/start-tracking', 'end-tracking', async () => {
+      const result = await executeEndTracking();
+      if (!result.ok) {
+        await refreshStatus();
+        handleActionFailure(result.error, 'End Tracking');
+        return;
+      }
+      await refreshStatus();
+    });
   }
 
   return (
     <ScrollView
       style={styles.flex}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: tabBarHeight + Spacing.md }]}
-      scrollIndicatorInsets={{ bottom: insets.bottom }}>
+      scrollIndicatorInsets={{ bottom: insets.bottom }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}>
       <Text style={styles.screenTitle}>
         {isOrgAdmin ? 'Leave & Attendance' : 'Clock & My Leave'}
       </Text>
 
-      {!isOrgAdmin && onDuty ? (
+      {!isOrgAdmin && canUseClock && onDuty ? (
         <View style={[styles.tracking, !trackingActive && styles.trackingMuted]}>
           <Ionicons
             name={trackingActive ? 'navigate' : 'time-outline'}
@@ -175,7 +276,7 @@ function ClockContent() {
         </View>
       ) : null}
 
-      {!isOrgAdmin ? (
+      {!isOrgAdmin && canUseClock ? (
       <View style={styles.card}>
         <View style={styles.statusRow}>
           <View style={styles.statusDotWrap}>
@@ -190,25 +291,32 @@ function ClockContent() {
             <Text style={styles.metricLabel}>Clocked in since</Text>
             <Text style={styles.metricValueLg}>{formatClock(record.clock_in_time)}</Text>
             <Text style={styles.hint}>
+              {durationLabel(record.clock_in_time)} on duty
               {trackingActive
-                ? 'Live location is active. Open End Tracking to stop, or Clock Out when done.'
-                : 'Attendance is already marked. Open Start Tracking to open the map and begin live location.'}
+                ? ' · Live location is active.'
+                : ' · Start tracking when you are ready.'}
             </Text>
+            <View style={styles.actionRow}>
+              <PrimaryButton
+                label="Clock Out"
+                onPress={() => void onClockOut()}
+                loading={busyAction === 'clock-out'}
+                disabled={busyAction !== null}
+              />
+            </View>
             {canTrack ? (
               <View style={styles.actionRow}>
                 <PrimaryButton
-                  label={trackingActive ? 'Open End Tracking' : 'Open Start Tracking'}
-                  onPress={() => void onOpenTracking()}
+                  label={trackingActive ? 'End Tracking' : 'Start Tracking'}
+                  onPress={() => {
+                    if (trackingActive) void onEndTracking();
+                    else void onStartTracking();
+                  }}
+                  loading={busyAction === 'start-tracking' || busyAction === 'end-tracking'}
+                  disabled={busyAction !== null}
                 />
-                <Pressable
-                  style={styles.secondaryButton}
-                  onPress={() => void goWithLocation('/clock-out')}>
-                  <Text style={styles.secondaryButtonText}>Clock Out</Text>
-                </Pressable>
               </View>
-            ) : (
-              <PrimaryButton label="Clock Out" onPress={() => void goWithLocation('/clock-out')} />
-            )}
+            ) : null}
           </>
         ) : (
           <>
@@ -216,26 +324,24 @@ function ClockContent() {
             <Text style={styles.shiftValue}>
               {formatDate(new Date())} · {shiftLabel}
             </Text>
-            <PrimaryButton label="Clock In" onPress={() => void goWithLocation('/clock-in')} />
+            <PrimaryButton
+              label="Clock In"
+              onPress={() => void onClockIn()}
+              loading={busyAction === 'clock-in'}
+              disabled={busyAction !== null}
+            />
             {canTrack ? (
-              <>
-                <PrimaryButton
-                  label="Open Start Tracking"
-                  onPress={() => undefined}
-                  disabled
-                />
-                <Text style={styles.hint}>
-                  Clock in marks attendance only. After clock-in, Open Start Tracking becomes
-                  available for live location.
-                </Text>
-              </>
+              <Text style={styles.hint}>
+                Clock in marks attendance only. After clock-in, Start Tracking becomes available
+                for live location — same as Home.
+              </Text>
             ) : null}
           </>
         )}
       </View>
       ) : null}
 
-      {!isOrgAdmin && missedOpen ? (
+      {!isOrgAdmin && canUseClock && missedOpen ? (
         <Pressable style={styles.missed} onPress={() => router.push('/missed-clock-out')}>
           <Ionicons name="warning" size={18} color={Colors.pendingText} />
           <View style={{ flex: 1 }}>
@@ -280,7 +386,7 @@ function ClockContent() {
         </Pressable>
       ) : null}
 
-      {!isOrgAdmin ? (
+      {!isOrgAdmin && canUseClock ? (
         <Pressable style={styles.applyBtn} onPress={() => router.push('/apply-leave')}>
           <Text style={styles.applyText}>+ Apply for leave</Text>
         </Pressable>

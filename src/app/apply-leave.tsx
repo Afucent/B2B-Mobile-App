@@ -10,6 +10,7 @@ import { OutlineButton } from '@/components/ui/OutlineButton';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { SafeScreen, useContentBottomInset } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { useToast } from '@/components/ui/Toast';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import {
   createLeaveRequest,
@@ -32,6 +33,7 @@ import {
 
 export default function ApplyLeaveScreen() {
   const bottomInset = useContentBottomInset();
+  const { showToast } = useToast();
   const today = ymd(new Date());
   const [types, setTypes] = useState<LeaveType[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
@@ -155,6 +157,7 @@ export default function ApplyLeaveScreen() {
         to_date: toDate,
         reason: reason.trim(),
       });
+      showToast('Leave applied successfully');
       router.replace({
         pathname: '/leave-applied',
         params: {

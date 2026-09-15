@@ -103,15 +103,20 @@ export default function AdminLiveEmployeeScreen() {
   const kpiRows = useMemo(() => {
     if (!data) return [];
     const rows: { label: string; value: string }[] = [];
+    const visitList = data.visits ?? [];
+    const visitsAssigned = visitList.length;
+    const visitsCompleted = visitList.filter(
+      (v) => (v.status ?? '').toLowerCase() === 'completed',
+    ).length;
     if (data.late_minutes != null) rows.push({ label: 'Late', value: `${data.late_minutes} min` });
     if (data.working_duration_label)
       rows.push({ label: 'Working', value: data.working_duration_label });
     if (data.distance_today_km != null)
       rows.push({ label: 'Distance today', value: `${data.distance_today_km} km` });
-    if (data.visits_completed != null || data.visits_assigned != null) {
+    if (visitList.length > 0 || data.visits_assigned != null || data.visits_completed != null) {
       rows.push({
         label: 'Visits',
-        value: `${data.visits_completed ?? 0}/${data.visits_assigned ?? 0}`,
+        value: `${visitsCompleted}/${visitsAssigned || data.visits_assigned || 0}`,
       });
     }
     if (data.battery_percent != null)
@@ -174,8 +179,21 @@ export default function AdminLiveEmployeeScreen() {
 
           {(data?.visits?.length ?? 0) > 0 ? (
             <View style={styles.card}>
-              <Text style={styles.sectionInCard}>Today&apos;s visits</Text>
-              {data!.visits!.map((visit, index) => (
+              <View style={styles.visitSectionHead}>
+                <Text style={[styles.sectionInCard, styles.sectionInCardInline]}>Today&apos;s visits</Text>
+                <Text style={styles.assignedBadge}>
+                  {
+                    (data!.visits ?? []).filter(
+                      (v) => (v.status ?? '').toLowerCase() === 'completed',
+                    ).length
+                  }{' '}
+                  of {(data!.visits ?? []).length} assigned
+                </Text>
+              </View>
+              {data!.visits!.map((visit, index) => {
+                const isComplete = (visit.status ?? '').toLowerCase() === 'completed';
+                const label = isComplete ? 'Complete' : 'In Progress';
+                return (
                 <View
                   key={visit.id}
                   style={[
@@ -183,16 +201,14 @@ export default function AdminLiveEmployeeScreen() {
                     index < data!.visits!.length - 1 && styles.fieldBorder,
                   ]}>
                   <View style={styles.visitHead}>
-                    <Text style={styles.value}>{visit.dealer_name ?? 'Dealer'}</Text>
-                    {visit.status ? (
-                      <StatusPill label={visit.status} tone={statusTone(visit.status)} />
-                    ) : null}
+                    <Text style={styles.value}>
+                      {visit.store_name || visit.dealer_name || 'Assigned dealer'}
+                    </Text>
+                    <StatusPill label={label} tone={statusTone(isComplete ? 'completed' : 'in_progress')} />
                   </View>
-                  {visit.scheduled_at ? (
-                    <Text style={styles.sub}>{formatClock(visit.scheduled_at)}</Text>
-                  ) : null}
                 </View>
-              ))}
+                );
+              })}
             </View>
           ) : null}
 
@@ -296,6 +312,27 @@ const styles = StyleSheet.create({
     color: Colors.heading,
     padding: Spacing.md,
     paddingBottom: 0,
+  },
+  sectionInCardInline: {
+    padding: 0,
+  },
+  visitSectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.md,
+  },
+  assignedBadge: {
+    color: '#1D4ED8',
+    backgroundColor: '#EFF6FF',
+    overflow: 'hidden',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    fontSize: 11,
+    fontWeight: '700',
   },
   meta: { color: Colors.muted },
   error: { color: Colors.danger },

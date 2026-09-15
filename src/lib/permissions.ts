@@ -120,7 +120,6 @@ export const PERMISSION_EQUIVALENTS: Record<string, Array<[string, string]>> = {
   'leave_requests:create': [
     ['leave_requests', 'create'],
     ['leave', 'apply'],
-    ['my_attendance_leave', 'create'],
   ],
   'leave_requests:update': [
     ['leave_requests', 'update'],
@@ -133,29 +132,18 @@ export const PERMISSION_EQUIVALENTS: Record<string, Array<[string, string]>> = {
   'attendance:create': [
     ['attendance', 'create'],
     ['attendance', 'clock'],
-    ['my_attendance_leave', 'create'],
   ],
   'attendance:read': [['attendance', 'read']],
   'attendance:clock': [
     ['attendance', 'clock'],
     ['attendance', 'create'],
-    ['my_attendance_leave', 'create'],
   ],
+  // Strict: View = open page · Create = clock in/out + apply leave (do not infer from Requests).
   'my_attendance_leave:read': [
     ['my_attendance_leave', 'read'],
     ['my_attendance_leave', 'create'],
-    ['attendance', 'create'],
-    ['attendance', 'clock'],
-    ['leave_requests', 'create'],
-    ['leave', 'apply'],
   ],
-  'my_attendance_leave:create': [
-    ['my_attendance_leave', 'create'],
-    ['attendance', 'create'],
-    ['attendance', 'clock'],
-    ['leave_requests', 'create'],
-    ['leave', 'apply'],
-  ],
+  'my_attendance_leave:create': [['my_attendance_leave', 'create']],
   'user_tracking:read': [
     ['user_tracking', 'read'],
     ['user_tracking', 'create'],

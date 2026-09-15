@@ -11,7 +11,7 @@ import { AppState } from 'react-native';
 
 import { useAuth } from '@/context/AuthContext';
 import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
-import { getTodayStatus } from '@/lib/api/attendance';
+import { getTodayStatus, type TodayStatus } from '@/lib/api/attendance';
 import {
   forceStopBackgroundLocation,
   isBackgroundLocationRunning,
@@ -27,6 +27,9 @@ import {
 } from '@/lib/backgroundLocation';
 
 type TrackingContextValue = {
+  /** Shared attendance session — same source for Home + Clock tabs. */
+  today: TodayStatus | null;
+  isClockedIn: boolean;
   trackingActive: boolean;
   pingMinutes: number;
   refreshStatus: () => Promise<void>;
@@ -40,6 +43,7 @@ const DEFAULT_PING_MINUTES = 10;
 export function TrackingProvider({ children }: { children: ReactNode }) {
   const { status } = useAuth();
   const { settings: orgSettings, refreshSettings } = useFieldOpsSettings();
+  const [today, setToday] = useState<TodayStatus | null>(null);
   const [trackingActive, setTrackingActive] = useState(false);
 
   const pingMinutes = Math.min(
@@ -50,11 +54,12 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
   const refreshStatus = useCallback(async () => {
     if (status !== 'signedIn') return;
     try {
-      const today = await getTodayStatus().catch(() => null);
+      const next = await getTodayStatus().catch(() => null);
       // Network failure must not stop GPS while the screen is off.
-      if (!today) return;
+      if (!next) return;
 
-      const active = Boolean(today.tracking_active);
+      setToday(next);
+      const active = Boolean(next.tracking_active);
 
       if (active) {
         setTrackingActive(true);
@@ -102,6 +107,7 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (status === 'signedOut') {
+      setToday(null);
       setTrackingActive(false);
       void forceStopBackgroundLocation();
       return;
@@ -135,8 +141,6 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     return () => sub.remove();
   }, [refreshSettings, refreshStatus, status, trackingActive]);
 
-  // Ensure native FGS is running when tracking becomes active (start only while foreground-eligible).
-  // Native TaskManager is the only ping source in background — no JS interval.
   useEffect(() => {
     if (status === 'signedOut' || !trackingActive) return;
     void warmBackgroundTrackingSession();
@@ -152,11 +156,13 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
+      today,
+      isClockedIn: Boolean(today?.is_clocked_in),
       trackingActive,
       pingMinutes,
       refreshStatus,
     }),
-    [refreshStatus, pingMinutes, trackingActive],
+    [today, refreshStatus, pingMinutes, trackingActive],
   );
 
   return <TrackingContext.Provider value={value}>{children}</TrackingContext.Provider>;

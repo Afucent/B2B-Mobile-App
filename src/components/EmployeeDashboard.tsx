@@ -16,7 +16,6 @@ import {
   gateAttendanceLocation,
   type AttendanceActionFailure,
 } from '@/lib/attendanceActions';
-import { getTodayStatus, type TodayStatus } from '@/lib/api/attendance';
 import { getMyVisits, getVisitHistory, type FieldVisit } from '@/lib/api/visits';
 import { durationLabel, formatClock } from '@/lib/format';
 import { ymd } from '@/lib/leaveUi';
@@ -32,17 +31,26 @@ function isCompleted(visit: FieldVisit) {
 }
 
 function visitAddress(visit: FieldVisit) {
+  const formatted = (visit.dealer_address || '')
+    .split(/\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(', ');
+  if (formatted) return formatted;
   return [visit.dealer_area, visit.dealer_city, visit.dealer_state].filter(Boolean).join(', ');
 }
 
-function currentHours(status: TodayStatus | null) {
-  const record = status?.record;
-  if (!record) return '0.0';
-  if (status?.is_clocked_in) {
-    const started = new Date(record.clock_in_time).getTime();
+function visitStatusLabel(visit: FieldVisit) {
+  return isCompleted(visit) ? 'Complete' : 'In Progress';
+}
+
+function currentHours(isClockedIn: boolean, clockInTime?: string | null, workingHours?: number | null) {
+  if (!clockInTime) return '0.0';
+  if (isClockedIn) {
+    const started = new Date(clockInTime).getTime();
     return Math.max(0, (Date.now() - started) / 3_600_000).toFixed(1);
   }
-  return (record.working_hours ?? 0).toFixed(1);
+  return (workingHours ?? 0).toFixed(1);
 }
 
 function handleActionFailure(error: AttendanceActionFailure, fallbackTitle: string) {
@@ -58,20 +66,21 @@ function handleActionFailure(error: AttendanceActionFailure, fallbackTitle: stri
 
 export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
   const { user } = useAuth();
-  const { pingMinutes, refreshStatus } = useTracking();
-  const { has, canView, canCreate, showMyAttendanceLeave, isOrgAdmin } = usePermissions();
-  const [today, setToday] = useState<TodayStatus | null>(null);
+  const {
+    today,
+    isClockedIn,
+    trackingActive,
+    pingMinutes,
+    refreshStatus,
+  } = useTracking();
+  const { canView, canCreate, showMyAttendanceLeave, isOrgAdmin } = usePermissions();
   const [visits, setVisits] = useState<FieldVisit[]>([]);
-  const [visitsTotal, setVisitsTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const busyRef = useRef(false);
 
-  const canUseClock =
-    showMyAttendanceLeave ||
-    has('attendance', 'create') ||
-    has('attendance', 'clock') ||
-    has('my_attendance_leave', 'create');
+  // Matrix: My Attendance & Leave → Create = clock in/out (+ apply leave elsewhere).
+  const canUseClock = canCreate('my_attendance_leave');
   // Employee roles often have visit_history / attendance but not field_visits.
   const canUseMyVisitsApi = canView('field_visits') || canCreate('field_visits');
   const canUseHistoryApi = canView('visit_history');
@@ -85,11 +94,11 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
     setLoading(true);
 
     async function fetchVisits(): Promise<{ items: FieldVisit[]; total: number } | null> {
+      const day = ymd(new Date());
       if (canUseMyVisitsApi) {
-        return getMyVisits();
+        return getMyVisits(day);
       }
       if (canUseHistoryApi && user?.id) {
-        const day = ymd(new Date());
         return getVisitHistory({
           employee_id: user.id,
           from_date: day,
@@ -98,19 +107,19 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
         });
       }
       if (showMyAttendanceLeave) {
-        return getMyVisits();
+        return getMyVisits(day);
       }
       return null;
     }
 
-    const [attendance, visitResponse] = await Promise.all([
-      canUseClock ? getTodayStatus().catch(() => null) : Promise.resolve(null),
-      canViewVisits ? fetchVisits().catch(() => null) : Promise.resolve(null),
+    await Promise.all([
+      canUseClock ? refreshStatus().catch(() => undefined) : Promise.resolve(),
+      canViewVisits
+        ? fetchVisits()
+            .then((visitResponse) => setVisits(visitResponse?.items ?? []))
+            .catch(() => setVisits([]))
+        : Promise.resolve(),
     ]);
-
-    setToday(attendance);
-    setVisits(visitResponse?.items ?? []);
-    setVisitsTotal(visitResponse?.total ?? 0);
     setLoading(false);
   }, [
     canUseClock,
@@ -119,6 +128,7 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
     canUseHistoryApi,
     showMyAttendanceLeave,
     user?.id,
+    refreshStatus,
   ]);
 
   useFocusEffect(
@@ -127,15 +137,16 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
     }, [load, refreshKey]),
   );
 
-  const pendingVisits = useMemo(
-    () => visits.filter((visit) => !isCompleted(visit)).sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)),
+  const todayVisits = useMemo(
+    () => [...visits].sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at)),
     [visits],
   );
-  const completedVisits = visits.filter(isCompleted).length;
-  const completion = visitsTotal ? Math.round((completedVisits / visitsTotal) * 100) : 0;
+  // Badge counts come only from today's loaded visits — never hardcoded.
+  const assignedCount = todayVisits.length;
+  const completedVisits = todayVisits.filter(isCompleted).length;
+  const completion = assignedCount ? Math.round((completedVisits / assignedCount) * 100) : 0;
 
-  const onDuty = Boolean(today?.is_clocked_in);
-  const trackingActive = Boolean(today?.tracking_active);
+  const onDuty = isClockedIn;
   const clockTime = today?.record?.clock_in_time ? formatClock(today.record.clock_in_time) : null;
 
   async function withGate(next: string, action: BusyAction, run: () => Promise<void>) {
@@ -286,56 +297,75 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
 
       {canViewVisits ? (
         <View style={styles.statGrid}>
-          <Stat label="VISITS" value={`${completedVisits} / ${visitsTotal}`} />
+          <Stat label="VISITS" value={`${completedVisits} / ${assignedCount}`} />
           <Stat label="TARGET" value={`${completion}%`} />
-          <Stat label="HOURS" value={`${currentHours(today)}h`} />
+          <Stat label="HOURS" value={`${currentHours(onDuty, today?.record?.clock_in_time, today?.record?.working_hours)}h`} />
         </View>
       ) : null}
 
       {canViewVisits ? (
-        <View style={styles.section}>
+        <View style={styles.todayCard}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Next on your route</Text>
-            <Pressable accessibilityRole="button" onPress={() => router.push('/(app)/field')}>
-              <Text style={styles.link}>See route</Text>
-            </Pressable>
+            <Text style={styles.sectionTitle}>Today&apos;s Visits</Text>
+            <View style={styles.assignedBadge}>
+              <Text style={styles.assignedBadgeText}>
+                {completedVisits} of {assignedCount} assigned
+              </Text>
+            </View>
           </View>
           {loading ? (
             <Text style={styles.emptyText}>Loading your visits...</Text>
-          ) : pendingVisits.length ? (
+          ) : todayVisits.length ? (
             <View style={styles.visitList}>
-              {pendingVisits.slice(0, 2).map((visit, index) => (
-                <Pressable
-                  key={visit.id}
-                  style={[styles.visitRow, index === 0 && styles.nextVisit]}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/visit-detail',
-                      params: {
-                        visitId: visit.id,
-                        dealerName: visit.dealer_name ?? 'Dealer',
-                        checkedIn: visit.reached_at ? '1' : '0',
-                        reachedAt: visit.reached_at ?? '',
-                      },
-                    })
-                  }>
-                  <View style={[styles.visitIcon, index === 0 && styles.visitIconActive]}>
-                    <Ionicons name="location-outline" size={20} color={index === 0 ? '#FFFFFF' : Colors.brandDark} />
-                  </View>
-                  <View style={styles.visitInfo}>
-                    <Text style={styles.visitName} numberOfLines={1}>{visit.dealer_name ?? 'Scheduled visit'}</Text>
-                    <Text style={styles.visitAddress} numberOfLines={1}>{visitAddress(visit) || visit.dealer_address || 'Address pending'}</Text>
-                  </View>
-                  <View style={styles.visitMeta}>
-                    <Text style={[styles.visitTime, index === 0 && styles.visitTimeActive]}>{formatClock(visit.scheduled_at)}</Text>
-                    <Ionicons name="chevron-forward" size={16} color={Colors.muted} />
-                  </View>
-                </Pressable>
-              ))}
+              {todayVisits.map((visit) => {
+                const done = isCompleted(visit);
+                const statusLabel = visitStatusLabel(visit);
+                const address = visitAddress(visit) || visit.dealer_name || 'Address pending';
+                return (
+                  <Pressable
+                    key={visit.id}
+                    style={styles.todayVisitRow}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/visit-detail',
+                        params: {
+                          visitId: visit.id,
+                          dealerName: visit.dealer_name ?? 'Dealer',
+                          checkedIn: visit.reached_at ? '1' : '0',
+                          reachedAt: visit.reached_at ?? '',
+                        },
+                      })
+                    }>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        done ? styles.statusDotComplete : styles.statusDotProgress,
+                      ]}
+                    />
+                    <View style={styles.visitInfo}>
+                      <View style={styles.todayVisitHead}>
+                        <Text style={styles.visitName} numberOfLines={2}>
+                          {address}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.statusLabel,
+                            done ? styles.statusComplete : styles.statusProgress,
+                          ]}>
+                          {statusLabel}
+                        </Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
             </View>
           ) : (
             <Text style={styles.emptyText}>No visits assigned for today.</Text>
           )}
+          <Pressable accessibilityRole="button" onPress={() => router.push('/(app)/visits')}>
+            <Text style={styles.link}>See all visits</Text>
+          </Pressable>
         </View>
       ) : null}
 
@@ -349,7 +379,7 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
             {canViewVisits ? (
               <QuickAction icon="location-outline" label="Next visit" onPress={() => router.push('/(app)/visits')} />
             ) : null}
-            {!isOrgAdmin ? (
+            {canUseClock ? (
               <QuickAction icon="calendar-outline" label="Apply leave" onPress={() => router.push('/apply-leave')} />
             ) : null}
           </View>
@@ -469,21 +499,43 @@ const styles = StyleSheet.create({
   statLabel: { color: '#9AAEAF', fontSize: 9, fontWeight: '800', letterSpacing: 0.7 },
   statValue: { color: Colors.brand, fontSize: 18, fontWeight: '800' },
   section: { gap: 10 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  todayCard: {
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: '#D7E8E8',
+    padding: Spacing.md,
+  },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   sectionTitle: { color: Colors.brand, fontSize: 15, fontWeight: '800' },
+  assignedBadge: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  assignedBadgeText: { color: '#1D4ED8', fontSize: 11, fontWeight: '700' },
   link: { color: '#008C87', fontSize: 14, fontWeight: '600' },
   sectionHint: { color: '#98A9AA', fontSize: 10 },
   visitList: { gap: 8 },
-  visitRow: { minHeight: 60, borderRadius: Radius.md, borderWidth: 1, borderColor: '#D7E8E8', backgroundColor: '#FFFFFF', padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  nextVisit: { backgroundColor: '#E2F4F0', borderColor: '#A6DCD4' },
-  visitIcon: { width: 34, height: 34, borderRadius: 9, backgroundColor: '#ECF5F3', alignItems: 'center', justifyContent: 'center' },
-  visitIconActive: { backgroundColor: Colors.brand },
+  todayVisitRow: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  statusDot: { width: 10, height: 10, borderRadius: 5, marginTop: 5 },
+  statusDotProgress: { backgroundColor: '#2563EB' },
+  statusDotComplete: { backgroundColor: '#16A34A' },
   visitInfo: { flex: 1, gap: 3 },
-  visitName: { color: '#31545A', fontSize: 12, fontWeight: '800' },
-  visitAddress: { color: '#809294', fontSize: 10 },
-  visitMeta: { alignItems: 'flex-end', gap: 4 },
-  visitTime: { color: '#7D9092', fontSize: 9, fontWeight: '700' },
-  visitTimeActive: { color: '#008C87' },
+  todayVisitHead: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  visitName: { flex: 1, color: '#31545A', fontSize: 13, fontWeight: '800' },
+  visitAddress: { color: '#809294', fontSize: 11 },
+  statusLabel: { fontSize: 11, fontWeight: '700' },
+  statusProgress: { color: '#1D4ED8' },
+  statusComplete: { color: '#15803D' },
   emptyText: { color: Colors.muted, fontSize: 13, paddingVertical: 8 },
   actions: {
     flexDirection: 'row',

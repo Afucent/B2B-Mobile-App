@@ -188,6 +188,7 @@ export default function AdminLeaveRequestsScreen() {
       await load();
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Approve failed');
+      await load();
     } finally {
       setBusyId('');
     }
@@ -208,6 +209,9 @@ export default function AdminLeaveRequestsScreen() {
       await load();
     } catch (err) {
       Alert.alert('Error', err instanceof Error ? err.message : 'Reject failed');
+      setRejectTarget(null);
+      setRejectReason('');
+      await load();
     } finally {
       setBusyId('');
     }

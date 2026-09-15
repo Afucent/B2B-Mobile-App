@@ -42,7 +42,7 @@ export default function ShiftCompleteScreen() {
   const hoursValue = Number.isFinite(parsedHours) ? parsedHours : hoursFromRange(inTime, outTime);
   const hours = hoursToLabel(hoursValue);
   const done = Number(visitsDone ?? 0) || 0;
-  const assigned = Number(visitsAssigned ?? 0) || Math.max(done, 1);
+  const assigned = Number(visitsAssigned ?? 0) || 0;
   const progress = assigned > 0 ? Math.round((done / assigned) * 100) : 0;
   const out = outTime ?? new Date().toISOString();
   const distance = Number(distanceParam ?? 0) || 0;

@@ -37,13 +37,13 @@
     "typescript": "~5.9.2"
   },
   "scripts": {
-    "start": "expo start",
-    "start:low-mem": "node --max-old-space-size=3072 ./node_modules/expo/bin/cli start --max-workers 2",
-    "start:clear": "node --max-old-space-size=3072 ./node_modules/expo/bin/cli start -c --max-workers 2",
+    "start": "node ./scripts/run-expo.js",
+    "start:low-mem": "node --max-old-space-size=3072 ./scripts/run-expo.js --max-workers 2",
+    "start:clear": "node --max-old-space-size=3072 ./scripts/run-expo.js -c",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web",
+    "web": "node ./scripts/run-expo.js --web",
     "lint": "expo lint"
   },
   "private": true

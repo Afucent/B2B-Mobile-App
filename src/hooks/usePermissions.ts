@@ -56,9 +56,7 @@ export function usePermissions() {
     const showMyAttendanceLeave =
       !orgAdmin &&
       (canViewModule(permissions, 'my_attendance_leave') ||
-        canCreateInModule(permissions, 'my_attendance_leave') ||
-        hasPermission(permissions, 'leave_requests', 'create') ||
-        hasPermission(permissions, 'attendance', 'create'));
+        canCreateInModule(permissions, 'my_attendance_leave'));
 
     return {
       permissions,

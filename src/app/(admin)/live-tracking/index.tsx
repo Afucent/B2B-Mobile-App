@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
-import LocationMap from '@/components/LocationMap';
+import LiveGlobeMap from '@/components/LiveGlobeMap';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { SafeScreen, useContentBottomInset } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
@@ -15,6 +15,7 @@ import { formatLiveStatus } from '@/lib/format';
 export default function AdminLiveTrackingScreen() {
   const bottomInset = useContentBottomInset();
   const [items, setItems] = useState<LiveEmployeeRow[]>([]);
+  const [pingMinutes, setPingMinutes] = useState(5);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -23,7 +24,10 @@ export default function AdminLiveTrackingScreen() {
     useCallback(() => {
       setLoading(true);
       void getLiveTrackingPanel()
-        .then((res) => setItems(res.items))
+        .then((res) => {
+          setItems(res.items);
+          setPingMinutes(res.gps_ping_interval_minutes ?? 5);
+        })
         .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load panel'))
         .finally(() => setLoading(false));
     }, []),
@@ -40,27 +44,37 @@ export default function AdminLiveTrackingScreen() {
           label: item.employee_name,
           initials: item.employee_initials,
           avatarUrl: item.avatar_url,
+          status: item.status,
+          address: item.last_address,
+          color:
+            item.status === 'active'
+              ? '#2E7D32'
+              : item.status === 'in_transit'
+                ? '#1976D2'
+                : item.status === 'idle'
+                  ? '#ED6C02'
+                  : item.status === 'gps_off'
+                    ? '#D32F2F'
+                    : '#757575',
         })),
     [items],
   );
-
-  const focus = focusId ? items.find((i) => i.employee_id === focusId) : items[0];
-  const hasPins = markers.length > 0;
-  const centerLat = hasPins ? (focus?.last_latitude ?? markers[0].latitude) : 20;
-  const centerLon = hasPins ? (focus?.last_longitude ?? markers[0].longitude) : 0;
 
   return (
     <RequireModuleAccess module="live_location">
       <SafeScreen>
         <ScreenHeader title="Live tracking" onBack={() => router.back()} />
-        <LocationMap
-          latitude={centerLat}
-          longitude={centerLon}
-          height={markers.length > 1 ? 320 : 260}
-          zoom={hasPins ? (markers.length > 3 ? 5 : markers.length > 1 ? 11 : 14) : 2}
+        <LiveGlobeMap
+          height={markers.length > 1 ? 340 : 300}
+          pingMinutes={pingMinutes}
           markers={markers}
           onMarkerPress={(id) => setFocusId(id)}
         />
+        {markers.length === 0 && !loading ? (
+          <Text style={styles.emptyMap}>
+            No live GPS points yet. Employees appear after Start Tracking.
+          </Text>
+        ) : null}
         <View style={styles.body}>
           {loading ? <Text style={styles.meta}>Loading live locations…</Text> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -115,6 +129,13 @@ export default function AdminLiveTrackingScreen() {
 
 const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: Spacing.md, paddingTop: Spacing.md },
+  emptyMap: {
+    color: Colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: Spacing.md,
+    paddingTop: Spacing.sm,
+  },
   section: { fontWeight: '800', color: Colors.heading, marginBottom: 10, fontSize: 15 },
   meta: { color: Colors.muted, marginBottom: 8 },
   empty: { color: Colors.muted, lineHeight: 20, paddingVertical: Spacing.md },

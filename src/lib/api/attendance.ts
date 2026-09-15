@@ -67,21 +67,35 @@ export function getTodayStatus() {
   return apiRequest<TodayStatus>('/attendance/today-status');
 }
 
-export function clockIn(latitude: number, longitude: number) {
+export function clockIn(latitude: number, longitude: number, address?: string | null) {
   return apiRequest<AttendanceRecord>('/attendance/clock-in', {
     method: 'POST',
-    body: { latitude, longitude, enable_location_tracking: false },
+    body: {
+      latitude,
+      longitude,
+      address: address?.trim() || undefined,
+      enable_location_tracking: false,
+    },
   });
 }
 
-export function clockOut(latitude: number, longitude: number) {
+export function clockOut(latitude: number, longitude: number, address?: string | null) {
   return apiRequest<AttendanceRecord>('/attendance/clock-out', {
     method: 'POST',
-    body: { latitude, longitude },
+    body: {
+      latitude,
+      longitude,
+      address: address?.trim() || undefined,
+    },
   });
 }
 
-export function pingLocation(latitude: number, longitude: number, accuracy?: number) {
+export function pingLocation(
+  latitude: number,
+  longitude: number,
+  accuracy?: number,
+  address?: string | null,
+) {
   return apiRequest('/attendance/location-ping', {
     method: 'POST',
     // Keep short so a paused JS timer mid-background cannot hold the ping lock for long.
@@ -90,28 +104,41 @@ export function pingLocation(latitude: number, longitude: number, accuracy?: num
       latitude,
       longitude,
       accuracy_meters: accuracy,
+      address: address?.trim() || undefined,
     },
   });
 }
 
-export function startLocation(latitude: number, longitude: number, startLocationLabel?: string) {
+export function startLocation(
+  latitude: number,
+  longitude: number,
+  startLocationLabel?: string,
+  address?: string | null,
+) {
   return apiRequest<AttendanceRecord>('/attendance/location/start', {
     method: 'POST',
     body: {
       latitude,
       longitude,
       start_location_label: startLocationLabel,
+      address: address?.trim() || undefined,
     },
   });
 }
 
-export function endLocation(latitude: number, longitude: number, endLocationLabel?: string) {
+export function endLocation(
+  latitude: number,
+  longitude: number,
+  endLocationLabel?: string,
+  address?: string | null,
+) {
   return apiRequest<AttendanceRecord>('/attendance/location/end', {
     method: 'POST',
     body: {
       latitude,
       longitude,
       end_location_label: endLocationLabel,
+      address: address?.trim() || undefined,
     },
   });
 }

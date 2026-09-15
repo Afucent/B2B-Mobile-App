@@ -70,10 +70,18 @@ export function createLeaveRequest(data: {
   reason: string;
   employee_id?: string;
 }) {
-  return apiRequest<LeaveRequest>('/leave-requests', {
+  return apiRequest<LeaveRequest & { days?: number }>('/leave-requests', {
     method: 'POST',
     body: data,
-  });
+  }).then((raw) => ({
+    ...raw,
+    number_of_days: raw.number_of_days ?? raw.days ?? 0,
+    leave_type_name: raw.leave_type_name || 'Leave',
+    from_date: raw.from_date,
+    to_date: raw.to_date,
+    status: raw.status || 'pending',
+    created_at: raw.created_at || new Date().toISOString(),
+  }));
 }
 
 /** @deprecated Prefer createLeaveRequest (same web endpoint). */

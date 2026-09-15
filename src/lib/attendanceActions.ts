@@ -71,7 +71,7 @@ export async function executeClockIn(): Promise<
 > {
   try {
     const loc = await requestLocation();
-    const record = await clockIn(loc.latitude, loc.longitude);
+    const record = await clockIn(loc.latitude, loc.longitude, loc.address);
     return { ok: true, data: { record, loc } };
   } catch (err) {
     const code = locationErrorCode(err);
@@ -96,7 +96,7 @@ export async function executeClockOut(options?: {
     if (options?.beforeCommit) {
       await options.beforeCommit();
     }
-    const closed = await clockOut(loc.latitude, loc.longitude);
+    const closed = await clockOut(loc.latitude, loc.longitude, loc.address);
     await forceStopBackgroundLocation().catch(() => undefined);
     return { ok: true, data: { closed, loc } };
   } catch (err) {
@@ -125,13 +125,13 @@ export async function executeStartTracking(
     await warmBackgroundTrackingSession();
 
     // Server session must exist before any location-ping (otherwise API returns 403).
-    await startLocation(next.latitude, next.longitude);
+    await startLocation(next.latitude, next.longitude, undefined, next.address);
     await persistTrackingActive(true);
 
     const gps = await startBackgroundLocationResult();
     if (!gps.ok) {
       await forceStopBackgroundLocation().catch(() => undefined);
-      await endLocation(next.latitude, next.longitude).catch(() => undefined);
+      await endLocation(next.latitude, next.longitude, undefined, next.address).catch(() => undefined);
       if (gps.reason === 'background_denied' || gps.reason === 'foreground_denied') {
         return {
           ok: false,
@@ -153,7 +153,7 @@ export async function executeStartTracking(
     const nativeRunning = await isBackgroundLocationRunning();
     if (!nativeRunning) {
       await forceStopBackgroundLocation().catch(() => undefined);
-      await endLocation(next.latitude, next.longitude).catch(() => undefined);
+      await endLocation(next.latitude, next.longitude, undefined, next.address).catch(() => undefined);
       return {
         ok: false,
         error: { kind: 'message', message: backgroundStartErrorMessage('start_failed') },
@@ -186,7 +186,7 @@ export async function executeEndTracking(
 ): Promise<AttendanceActionResult<{ loc: DeviceLocation }>> {
   try {
     const next = existingLoc ?? (await requestLocation());
-    await endLocation(next.latitude, next.longitude);
+    await endLocation(next.latitude, next.longitude, undefined, next.address);
     await forceStopBackgroundLocation().catch(() => undefined);
     return { ok: true, data: { loc: next } };
   } catch (err) {

@@ -35,6 +35,33 @@ function coordsLabel(lat?: number | null, lon?: number | null) {
   return `${lat.toFixed(5)}, ${lon.toFixed(5)}`;
 }
 
+function roleKey(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+/** Same as web visit history: exclude Dealer + Organization Admin. */
+function isVisitHistoryEmployee(user: AdminUser) {
+  const keys = (user.roles ?? []).map((r) => roleKey(r.name));
+  if (keys.length === 0) return true;
+  const excluded = new Set(['dealer', 'organization_admin']);
+  return !keys.some((key) => excluded.has(key));
+}
+
+async function loadFilterEmployees() {
+  const pageSize = 100;
+  let offset = 0;
+  const all: AdminUser[] = [];
+  for (;;) {
+    const res = await listUsers(offset, pageSize, { status: 'active' });
+    all.push(...res.items);
+    if (res.items.length < pageSize || all.length >= res.total) break;
+    offset += pageSize;
+  }
+  return all
+    .filter(isVisitHistoryEmployee)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+}
+
 function openMap(opts: {
   lat?: number | null;
   lon?: number | null;
@@ -74,8 +101,8 @@ function VisitHistoryContent({ admin }: { admin: boolean }) {
   useFocusEffect(
     useCallback(() => {
       if (admin) {
-        void listUsers(0, 100)
-          .then((res) => setEmployees(res.items))
+        void loadFilterEmployees()
+          .then(setEmployees)
           .catch(() => setEmployees([]));
       }
     }, [admin]),

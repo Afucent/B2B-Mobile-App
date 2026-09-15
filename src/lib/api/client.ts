@@ -47,8 +47,24 @@ export function hydrateApiBaseCache(url: string | null | undefined) {
   }
 }
 
-/** Wait for SecureStore so headless pings do not hit 10.0.2.2 / localhost. */
+/** Wait for SecureStore. In Expo Go, prefer Metro LAN host so phone hits the same PC as JS. */
 export async function ensureApiBaseReady(): Promise<string> {
+  if (__DEV__) {
+    const metroUrl = resolveApiBase({ persist: true });
+    if (metroUrl && !isPlaceholderApiBase(metroUrl)) {
+      return metroUrl;
+    }
+  }
+
+  const configured = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '');
+  if (configured) {
+    if (rememberedApiBase !== configured) {
+      rememberedApiBase = configured;
+      void persistApiBase(configured);
+    }
+    return configured;
+  }
+
   if (rememberedApiBase && !isPlaceholderApiBase(rememberedApiBase)) {
     return rememberedApiBase;
   }
@@ -63,28 +79,29 @@ export async function ensureApiBaseReady(): Promise<string> {
   return resolveApiBase();
 }
 
-function rememberApiBase(url: string) {
+function rememberApiBase(url: string, persist = true) {
   if (!url || url.includes('10.0.2.2') || url.includes('localhost')) return;
   rememberedApiBase = url;
-  void persistApiBase(url);
+  if (persist) void persistApiBase(url);
 }
 
-function resolveApiBase(): string {
+function resolveApiBase(options?: { persist?: boolean }): string {
+  const persist = options?.persist !== false;
   const configured = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '');
 
-  // In Expo Go / metro, the phone already reached this host to download JS.
-  // Prefer it for the API so a stale .env IP cannot break same-Wi‑Fi local backend.
+  // In Expo Go / Metro, the phone already reached this LAN host for JS.
+  // Prefer that host + API port so Wi‑Fi IP changes do not break login.
   if (__DEV__) {
     const devHost = getExpoDevHost();
     if (devHost && isLanHost(devHost)) {
       const url = `http://${devHost}:${DEFAULT_API_PORT}${API_PATH}`;
-      rememberApiBase(url);
+      rememberApiBase(url, persist);
       return url;
     }
   }
 
   if (configured) {
-    rememberApiBase(configured);
+    rememberApiBase(configured, persist);
     return configured;
   }
 
@@ -107,7 +124,7 @@ export function getApiBase(): string {
 }
 
 /** @deprecated use getApiBase() — kept for call sites that import a constant */
-export const API_BASE = resolveApiBase();
+export const API_BASE = resolveApiBase({ persist: false });
 
 function formatApiError(detail: unknown, fallback: string) {
   if (typeof detail === 'string') return detail;

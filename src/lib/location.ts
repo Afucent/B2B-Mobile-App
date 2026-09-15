@@ -54,7 +54,16 @@ export async function requestLocation(): Promise<DeviceLocation> {
     const places = await Location.reverseGeocodeAsync({ latitude, longitude });
     const place = places[0];
     if (place) {
-      address = [place.name, place.street, place.district, place.city, place.region]
+      address = [
+        place.name,
+        place.street,
+        place.district,
+        place.subregion,
+        place.city,
+        place.region,
+        place.postalCode ? `PIN ${place.postalCode}` : null,
+        place.country,
+      ]
         .filter(Boolean)
         .join(', ');
     }

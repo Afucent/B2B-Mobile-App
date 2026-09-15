@@ -3,7 +3,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Alert, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -12,6 +12,7 @@ import { TextField } from '@/components/ui/TextField';
 import TabModuleLinks from '@/components/TabModuleLinks';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
+import { useAppRefresh } from '@/hooks/useAppRefresh';
 import { changePassword, updateProfile, type MeResponse } from '@/lib/api/auth';
 import { uploadMedia } from '@/lib/api/uploads';
 import { isEmail, isMobileNumber, passwordChecks } from '@/lib/format';
@@ -51,6 +52,7 @@ function formFromUser(user: MeResponse): ProfileForm {
 
 export default function ProfileScreen() {
     const { user, refresh } = useAuth();
+    const { refreshing, onRefresh } = useAppRefresh();
     const [form, setForm] = useState<ProfileForm>(emptyForm);
     const [avatar, setAvatar] = useState<string | null>(null);
     const [avatarViewerVisible, setAvatarViewerVisible] = useState(false);
@@ -166,7 +168,9 @@ export default function ProfileScreen() {
                     <Ionicons name="settings-outline" size={21} color={Colors.heading} />
                 </Pressable>
             } />
-            <KeyboardSafeScrollView contentContainerStyle={styles.content}>
+            <KeyboardSafeScrollView
+              contentContainerStyle={styles.content}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}>
                 <View style={styles.hero}>
                     <Pressable onPress={handleAvatarPress} disabled={uploadingAvatar} style={styles.avatarButton} accessibilityRole="button" accessibilityLabel={editing ? 'Change profile photo' : 'View profile photo'}>
                         {avatar ? <Image source={{ uri: avatar }} style={styles.avatar} contentFit="cover" /> :

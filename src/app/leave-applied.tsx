@@ -25,7 +25,7 @@ export default function LeaveAppliedScreen() {
 
   return (
     <View style={styles.flex}>
-      <ScreenHeader title="Leave Applied" onBack={() => router.replace('/(app)/leaves')} />
+      <ScreenHeader title="Leave Applied" onBack={() => router.replace('/(app)/clock')} />
       <View style={styles.body}>
         <Stamp
           title="LEAVE APPLIED"
@@ -49,7 +49,7 @@ export default function LeaveAppliedScreen() {
         </View>
         <Text style={styles.note}>Your manager has been notified.</Text>
         <View style={{ flex: 1 }} />
-        <PrimaryButton label="View Leave Status" onPress={() => router.replace('/(app)/leaves')} />
+        <PrimaryButton label="View Leave Status" onPress={() => router.replace('/(app)/clock')} />
         <OutlineButton label="Back to Dashboard" onPress={() => router.replace('/(app)')} />
       </View>
     </View>

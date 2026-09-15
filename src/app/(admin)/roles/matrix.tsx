@@ -35,7 +35,7 @@ const COLUMN_LABELS: Record<MatrixColumn | 'full', string> = {
 };
 
 const MODULE_HINTS: Record<string, string> = {
-  leave_requests: 'Create = Apply leave · Edit = Approve / Reject',
+  leave_requests: 'Create · Edit = Approve / Reject',
   attendance: 'Admin attendance board (View). Clock is under My Attendance & Leave',
   live_location: 'Admin live map only (View). Start/End is Employee start & end location',
   my_attendance_leave: 'View = open page · Create = clock in/out + apply leave',

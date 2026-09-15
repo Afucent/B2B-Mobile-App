@@ -125,9 +125,12 @@ export type EmployeeLiveDetail = {
   battery_percent?: number | null;
   visits?: Array<{
     id: string;
+    store_name?: string | null;
     dealer_name?: string | null;
     status?: string;
+    started_at?: string | null;
     scheduled_at?: string | null;
+    duration_label?: string | null;
   }>;
   attendance_record_id?: string | null;
   gps_status?: string | null;
