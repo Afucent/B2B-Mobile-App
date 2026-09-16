@@ -17,6 +17,8 @@ export type AdminNavContext = {
   canCreate: (module: string) => boolean;
   canManage: (module: string) => boolean;
   fieldTrackingEnabled: boolean;
+  /** Org admin manages the team — hide self-service My Visits. */
+  isOrgAdmin?: boolean;
 };
 
 const USERS_ROLES_LINKS: AdminNavLink[] = [

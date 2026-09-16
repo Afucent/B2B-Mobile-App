@@ -3,66 +3,11 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
 
-import { Colors } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 
-/** Brand green only — matches native splash + verifying session gate. */
-const SPLASH_BG = Colors.background;
-
-function PulseCircle({ delay, size }: { delay: number; size: number }) {
-  const scale = useSharedValue(0.35);
-  const opacity = useSharedValue(0.55);
-
-  useEffect(() => {
-    scale.value = withDelay(
-      delay,
-      withRepeat(
-        withSequence(
-          withTiming(2.6, { duration: 1600, easing: Easing.out(Easing.quad) }),
-          withTiming(0.35, { duration: 0 }),
-        ),
-        -1,
-        false,
-      ),
-    );
-    opacity.value = withDelay(
-      delay,
-      withRepeat(
-        withSequence(
-          withTiming(0, { duration: 1600, easing: Easing.out(Easing.quad) }),
-          withTiming(0.55, { duration: 0 }),
-        ),
-        -1,
-        false,
-      ),
-    );
-  }, [delay, opacity, scale]);
-
-  const style = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: opacity.value,
-  }));
-
-  return (
-    <Animated.View
-      style={[
-        styles.circle,
-        { width: size, height: size, borderRadius: size / 2 },
-        style,
-      ]}
-    />
-  );
-}
+/** White AFBEX FSA / Afucent splash — full clear logo, no circle crop. */
+const SPLASH_BG = '#FFFFFF';
 
 export default function SplashGate() {
   const { status } = useAuth();
@@ -71,28 +16,18 @@ export default function SplashGate() {
 
   useEffect(() => {
     void SplashScreen.hideAsync();
-    const t = setTimeout(() => setMinTimeDone(true), 1600);
+    const t = setTimeout(() => setMinTimeDone(true), 1400);
     return () => clearTimeout(t);
   }, []);
 
   if (!sessionReady || !minTimeDone) {
     return (
       <View style={styles.splash}>
-        <StatusBar style="light" />
-        <View style={styles.rippleArea}>
-          <PulseCircle delay={0} size={72} />
-          <PulseCircle delay={320} size={72} />
-          <PulseCircle delay={640} size={72} />
-          <View style={styles.centerDot} />
-        </View>
-        {/* <Text style={styles.brand}>AFBEX</Text> */}
+        <StatusBar style="dark" />
         <Image
           source={require('@/assets/images/logo_png.png')}
-          style={{
-            width: 150,
-            height: 40,
-            resizeMode: 'contain',
-          }}
+          style={styles.logo}
+          accessibilityLabel="AFBEX FSA by Afucent"
         />
         <Text style={styles.status}>VERIFYING SESSION...</Text>
       </View>
@@ -109,35 +44,17 @@ const styles = StyleSheet.create({
     backgroundColor: SPLASH_BG,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 28,
   },
-  rippleArea: {
-    width: 120,
-    height: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 36,
-  },
-  circle: {
-    position: 'absolute',
-    borderWidth: 1.5,
-    borderColor: '#1D2939',
-    backgroundColor: 'transparent',
-  },
-  centerDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: '#1D2939',
-  },
-  brand: {
-    color: '#1D2939',
-    fontSize: 36,
-    fontWeight: '800',
-    letterSpacing: 3,
+  logo: {
+    width: '100%',
+    maxWidth: 320,
+    height: 110,
+    resizeMode: 'contain',
   },
   status: {
-    marginTop: 14,
-    color: 'rgba(29, 41, 57, 0.85)',
+    marginTop: 28,
+    color: '#9AA4AE',
     fontSize: 11,
     fontWeight: '600',
     letterSpacing: 2,

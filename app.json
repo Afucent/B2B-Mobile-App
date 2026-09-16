@@ -8,7 +8,7 @@
     "scheme": "afbex",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/images/logo_png.png",
+      "image": "./assets/images/splash-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#FFFFFF"
     },
@@ -21,7 +21,7 @@
         "UIBackgroundModes": ["location", "fetch"]
       },
       "splash": {
-        "image": "./assets/images/logo_png.png",
+        "image": "./assets/images/splash-logo.png",
         "resizeMode": "contain",
         "backgroundColor": "#FFFFFF"
       }
@@ -49,7 +49,7 @@
       ],
       "package": "com.anonymous.afbex",
       "splash": {
-        "image": "./assets/images/logo_png.png",
+        "image": "./assets/images/splash-logo.png",
         "resizeMode": "contain",
         "backgroundColor": "#FFFFFF"
       }
@@ -63,8 +63,8 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/logo_png.png",
-          "imageWidth": 160,
+          "image": "./assets/images/splash-logo.png",
+          "imageWidth": 288,
           "backgroundColor": "#FFFFFF",
           "resizeMode": "contain"
         }

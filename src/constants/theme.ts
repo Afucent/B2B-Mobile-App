@@ -5,8 +5,8 @@ export const Colors = {
   brandSoft: '#E0F2F1',
   accent: '#E88D67',
   accentCoral: '#D4735A',
-  /** Same as brand — splash must stay green, never accent/stamp orange. */
-  splash: '#1A3A3A',
+  /** White AFBEX FSA / Afucent splash — never orange stamp screen. */
+  splash: '#FFFFFF',
   background: '#FFFFFF',
   surface: '#F4F8F7',
   surfaceWarm: '#F7F3E9',
@@ -54,4 +54,4 @@ export const Radius = {
   pill: 999,
 } as const;
 
-export const APP_VERSION = '2.6';
+export const APP_VERSION = '2.7';
