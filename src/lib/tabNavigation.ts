@@ -1,0 +1,210 @@
+import type { Href } from 'expo-router';
+
+import type { AdminNavContext } from '@/lib/adminNavigation';
+
+export type AppTabName = 'index' | 'clock' | 'field' | 'roles' | 'profile';
+
+export type TabNavLink = {
+  title: string;
+  subtitle?: string;
+  href: Href;
+  module: string;
+  visible?: (ctx: AdminNavContext) => boolean;
+};
+
+export type TabNavSection = {
+  title: string;
+  links: TabNavLink[];
+};
+
+function filterLinks(links: TabNavLink[], ctx: AdminNavContext): TabNavLink[] {
+  return links.filter((link) => {
+    if (link.visible) return link.visible(ctx);
+    return ctx.canView(link.module);
+  });
+}
+
+const ROLES_LINKS: TabNavLink[] = [
+  {
+    title: 'Users',
+    subtitle: 'Create and manage users',
+    href: '/(admin)/users',
+    module: 'users',
+    visible: (ctx) => ctx.canView('users') || ctx.canCreate('users'),
+  },
+  {
+    title: 'Role library',
+    subtitle: 'Custom roles for your org',
+    href: '/(admin)/roles',
+    module: 'role_library',
+  },
+  {
+    title: 'Permission matrix',
+    subtitle: 'Web & mobile access per role',
+    href: '/(admin)/roles/matrix',
+    module: 'permission_matrix',
+  },
+  {
+    title: 'Dealer assignment',
+    subtitle: 'Assign dealers to field users',
+    href: '/(admin)/users/dealer-assignments',
+    module: 'dealers',
+  },
+];
+
+const PROFILE_LINKS: TabNavLink[] = [
+  {
+    title: 'Organisation profile',
+    href: '/(admin)/organization/profile',
+    module: 'organization',
+  },
+];
+
+const LEAVES_ADMIN_LINKS: TabNavLink[] = [
+  {
+    title: 'Leave types',
+    href: '/(admin)/leave/types',
+    module: 'leave_types',
+    visible: (ctx) =>
+      ctx.canView('leave_types') ||
+      ctx.canManage('leave_types') ||
+      ctx.canCreate('leave_types'),
+  },
+  {
+    title: 'Leave requests',
+    subtitle: 'Approve or reject requests',
+    href: '/(admin)/leave/requests',
+    module: 'leave_requests',
+  },
+  {
+    title: 'Team calendar',
+    href: '/(admin)/leave/calendar',
+    module: 'team_calendar',
+  },
+  {
+    title: 'Attendance',
+    subtitle: 'Clock in / clock out by day',
+    href: '/(admin)/attendance',
+    module: 'attendance',
+  },
+];
+
+const FIELD_LINKS: TabNavLink[] = [
+  {
+    title: 'Visit assign',
+    subtitle: 'Assign dealer visits to employees',
+    href: '/visit-assign',
+    module: 'visit_assign',
+    visible: (ctx) => ctx.canView('visit_assign') || ctx.canCreate('visit_assign'),
+  },
+  {
+    title: 'My Visits',
+    subtitle: 'Your assigned visits — check-in / complete with notes & photo',
+    href: '/(app)/visits',
+    module: 'field_visits',
+    visible: (ctx) => ctx.canView('field_visits') || ctx.canCreate('field_visits'),
+  },
+  {
+    title: 'Visit history',
+    subtitle: 'Completed visits by employee',
+    href: '/visit-history',
+    module: 'visit_history',
+    visible: (ctx) => ctx.canView('visit_history'),
+  },
+  {
+    title: 'Live tracking',
+    subtitle: 'Real-time map of field team',
+    href: '/(admin)/live-tracking',
+    module: 'live_location',
+  },
+  {
+    title: 'Field ops settings',
+    subtitle: 'Shift windows & GPS tracking',
+    href: '/(admin)/field-ops-settings',
+    module: 'shift_gps_settings',
+  },
+];
+
+export function buildRolesTabSections(ctx: AdminNavContext): TabNavSection[] {
+  const links = filterLinks(ROLES_LINKS, ctx);
+  return links.length ? [{ title: 'Users & roles', links }] : [];
+}
+
+export function buildProfileTabSections(ctx: AdminNavContext): TabNavSection[] {
+  const links = filterLinks(PROFILE_LINKS, ctx);
+  return links.length ? [{ title: 'Organisation', links }] : [];
+}
+
+export function buildLeavesTabSections(ctx: AdminNavContext): TabNavSection[] {
+  if (!ctx.fieldTrackingEnabled) return [];
+  const links = filterLinks(LEAVES_ADMIN_LINKS, ctx);
+  return links.length ? [{ title: 'Leave & attendance', links }] : [];
+}
+
+export function buildFieldTabSections(ctx: AdminNavContext): TabNavSection[] {
+  if (!ctx.fieldTrackingEnabled) return [];
+  const links = filterLinks(FIELD_LINKS, ctx);
+  return links.length ? [{ title: 'Field operations', links }] : [];
+}
+
+type TabVisibilityContext = {
+  isOrgAdmin: boolean;
+  showMyAttendanceLeave: boolean;
+  hasAnyAdminRead: boolean;
+  canView: (module: string) => boolean;
+  has: (module: string, action: string) => boolean;
+  fieldTrackingEnabled: boolean;
+};
+
+export function getVisibleAppTabs(ctx: TabVisibilityContext): AppTabName[] {
+  const tabs: AppTabName[] = ['index'];
+
+  // Clock: employee My Attendance & Leave, leave/attendance admins, or org admin.
+  // Do not use Requests/Attendance create as a substitute for employee clock-in.
+  const showClock =
+    ctx.isOrgAdmin ||
+    ctx.showMyAttendanceLeave ||
+    canAccessLeaveManagement(ctx);
+
+  // Field: only when at least one field module is allowed — never tied to Clock.
+  const showField =
+    ctx.fieldTrackingEnabled &&
+    (ctx.canView('live_location') ||
+      ctx.canView('visit_assign') ||
+      ctx.has('visit_assign', 'create') ||
+      ctx.canView('visit_history') ||
+      ctx.canView('field_visits') ||
+      ctx.has('field_visits', 'create') ||
+      ctx.canView('shift_gps_settings'));
+
+  if (showClock) tabs.push('clock');
+  if (showField) tabs.push('field');
+  if (canAccessRolesTab(ctx)) tabs.push('roles');
+  tabs.push('profile');
+
+  return tabs;
+}
+
+export function canAccessRolesTab(ctx: TabVisibilityContext): boolean {
+  return (
+    ctx.canView('users') ||
+    ctx.has('users', 'create') ||
+    ctx.canView('role_library') ||
+    ctx.canView('permission_matrix') ||
+    ctx.canView('dealers')
+  );
+}
+
+export function canAccessLeaveManagement(ctx: TabVisibilityContext): boolean {
+  return (
+    ctx.fieldTrackingEnabled &&
+    (ctx.canView('leave_types') ||
+      ctx.canView('leave_requests') ||
+      ctx.canView('team_calendar') ||
+      ctx.canView('attendance'))
+  );
+}
+
+export function canViewDashboard(ctx: TabVisibilityContext): boolean {
+  return ctx.canView('dashboard') || ctx.isOrgAdmin || ctx.hasAnyAdminRead;
+}

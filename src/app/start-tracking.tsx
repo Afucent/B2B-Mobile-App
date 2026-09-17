@@ -1,0 +1,355 @@
+import LocationMap from '@/components/LocationMap';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View} from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { Colors, Radius } from '@/constants/theme';
+import { useAuth } from '@/context/AuthContext';
+import { useTracking } from '@/context/TrackingContext';
+import {
+  getEmployeeLiveDetail,
+  getTodayStatus,
+  type EmployeeLiveDetail,
+  type TodayStatus,
+} from '@/lib/api/attendance';
+import { executeEndTracking, executeStartTracking, gateAttendanceLocation } from '@/lib/attendanceActions';
+import { durationLabel, formatClock, formatKm } from '@/lib/format';
+import { getLastKnownLocation, requestLocation, type DeviceLocation } from '@/lib/location';
+
+export default function StartTrackingScreen() {
+  const { user } = useAuth();
+  const { pingMinutes, refreshStatus } = useTracking();
+  const [today, setToday] = useState<TodayStatus | null>(null);
+  const [live, setLive] = useState<EmployeeLiveDetail | null>(null);
+  const [loc, setLoc] = useState<DeviceLocation | null>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [now, setNow] = useState(new Date());
+  const insets = useSafeAreaInsets();
+
+  const refresh = useCallback(async () => {
+    if (!user) return;
+    const status = await getTodayStatus().catch(() => null);
+    setToday(status);
+    if (!status?.is_clocked_in) {
+      setError('Clock in first, then start live tracking.');
+      setLoading(false);
+      return;
+    }
+    const liveDetail = await getEmployeeLiveDetail(user.id).catch(() => null);
+    setLive(liveDetail);
+    setLoading(false);
+    await refreshStatus();
+  }, [refreshStatus, user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refresh();
+    }, [refresh]),
+  );
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      const last = await getLastKnownLocation();
+      if (last) setLoc(last);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!today?.tracking_active) return;
+    const timer = setInterval(() => {
+      void requestLocation()
+        .then(setLoc)
+        .catch(() => undefined);
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, [today?.tracking_active]);
+
+  async function onStartTracking() {
+    setBusy(true);
+    setError('');
+    try {
+      const block = await gateAttendanceLocation('/start-tracking', {
+        requireAlways: true,
+        pending: { type: 'start-tracking', returnTo: '/start-tracking', pingMinutes },
+      });
+      if (block) {
+        router.push(block);
+        return;
+      }
+      const result = await executeStartTracking(pingMinutes, loc, '/start-tracking');
+      if (!result.ok) {
+        await refreshStatus();
+        if (result.error.kind === 'navigate') {
+          router.replace(result.error.href);
+          return;
+        }
+        setError(result.error.kind === 'message' ? result.error.message : 'Unable to start tracking.');
+        return;
+      }
+      setLoc(result.data.loc);
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onEndTracking() {
+    setBusy(true);
+    setError('');
+    try {
+      const result = await executeEndTracking(loc);
+      if (!result.ok) {
+        if (result.error.kind === 'navigate') {
+          router.replace(result.error.href);
+          return;
+        }
+        setError(result.error.kind === 'message' ? result.error.message : 'Unable to end tracking.');
+        return;
+      }
+      setLoc(result.data.loc);
+      await refreshStatus();
+      router.replace('/(app)/clock');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const trackingActive = Boolean(today?.tracking_active);
+  const record = today?.record;
+  const lat = loc?.latitude ?? live?.latitude ?? null;
+  const lon = loc?.longitude ?? live?.longitude ?? null;
+  const mapLabel = live?.employee_name ?? user?.name ?? 'You';
+  const mapInitials =
+    live?.employee_initials ??
+    (mapLabel
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((p, i, arr) => (arr.length === 1 ? p.slice(0, 2) : p[0]))
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'YO');
+  const avatarUrl = live?.avatar_url ?? user?.avatar_url ?? null;
+
+  return (
+    <View style={styles.flex}>
+      <ScreenHeader title="Live Tracking" onBack={() => router.back()} />
+
+      <View style={styles.mapWrap}>
+        {lat != null && lon != null ? (
+          <LocationMap
+            latitude={lat}
+            longitude={lon}
+            height={240}
+            markers={[
+              {
+                id: user?.id ?? 'self',
+                latitude: lat,
+                longitude: lon,
+                label: mapLabel,
+                initials: mapInitials,
+                avatarUrl,
+                color: '#0F766E',
+              },
+            ]}
+          />
+        ) : (
+          <View style={styles.mapFallback}>
+            <ActivityIndicator color="#fff" />
+          </View>
+        )}
+        <View style={[styles.gpsBadge, trackingActive ? styles.gpsOn : styles.gpsOff]}>
+          <Text style={styles.gpsText}>
+            {trackingActive ? 'TRACKING ACTIVE · GPS ONLINE' : 'TRACKING OFF'}
+          </Text>
+        </View>
+      </View>
+
+      <ScrollView
+        style={styles.sheet}
+        contentContainerStyle={[
+          styles.sheetContent,
+          {
+            paddingBottom: Math.max(insets.bottom + 20, 32),
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {loading ? (
+          <Text style={styles.meta}>Loading live tracking…</Text>
+        ) : null}
+
+        <Text style={styles.posLabel}>Current position</Text>
+        <Text style={styles.posValue}>
+          {loc?.address || live?.address || 'Waiting for live GPS…'}
+        </Text>
+
+        <View style={styles.metricSplit}>
+          <View>
+            <Text style={styles.metricLabel}>Duration</Text>
+            <Text style={styles.metricValue}>
+              {trackingActive
+                ? live?.working_duration_label ?? durationLabel(record?.clock_in_time, now)
+                : '—'}
+            </Text>
+          </View>
+          <View style={styles.metricRight}>
+            <Text style={styles.metricLabel}>Distance</Text>
+            <Text style={styles.metricValue}>
+              {trackingActive ? formatKm(live?.distance_today_km) : '—'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.metaCard}>
+          <Text style={styles.metricLabel}>Clocked in since</Text>
+          <Text style={styles.metaValue}>{formatClock(record?.clock_in_time)}</Text>
+          {trackingActive && live?.last_ping_label ? (
+            <Text style={styles.meta}>Last ping · {live.last_ping_label}</Text>
+          ) : null}
+          <Text style={styles.meta}>
+            Location logs every {pingMinutes} min while tracking, including with the app closed or the screen off.
+          </Text>
+        </View>
+
+        <Text style={styles.note}>
+          Tracking continues after you leave the app and turn the screen off. Allow location all the time, keep the persistent “AFBEX location tracking” notification on, and disable
+          battery optimization for AFBEX. End tracking stops location updates without clocking out.
+        </Text>
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        <View style={styles.buttonContainer}>
+          {trackingActive ? (
+            <PrimaryButton label="End Tracking" onPress={() => void onEndTracking()} loading={busy} />
+          ) : (
+            <PrimaryButton
+              label="Start Tracking"
+              onPress={() => void onStartTracking()}
+              loading={busy}
+              disabled={!today?.is_clocked_in}
+            />
+          )}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1, backgroundColor: Colors.background },
+  mapWrap: { height: 240, backgroundColor: Colors.mapOverlay },
+  mapFallback: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  gpsBadge: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+
+  gpsOn: {
+    backgroundColor: 'rgba(4,120,87,0.9)',
+  },
+
+  gpsOff: {
+    backgroundColor: 'rgba(20,20,20,0.72)',
+  },
+
+  gpsText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+
+  sheet: {
+    flex: 1,
+  },
+
+  sheetContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    gap: 10,
+  },
+
+  posLabel: {
+    color: Colors.muted,
+    fontSize: 13,
+  },
+
+  posValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.heading,
+    marginTop: -4,
+  },
+
+  metricSplit: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+
+  metricRight: {
+    alignItems: 'flex-end',
+  },
+
+  metricLabel: {
+    color: Colors.muted,
+    fontSize: 12,
+  },
+
+  metricValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.heading,
+  },
+
+  metaCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    padding: 12,
+    gap: 4,
+  },
+
+  metaValue: {
+    color: Colors.heading,
+    fontWeight: '700',
+    fontSize: 16,
+  },
+
+  note: {
+    color: Colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
+  meta: {
+    color: Colors.muted,
+    fontSize: 12,
+  },
+
+  error: {
+    color: Colors.danger,
+    fontSize: 13,
+  },
+
+  buttonContainer: {
+    marginTop: 4,
+  },
+});
+

@@ -1,0 +1,169 @@
+import { apiRequest } from '@/lib/api/client';
+
+export interface AttendanceSummary {
+  date?: string;
+  present: number;
+  on_leave: number;
+  absent: number;
+  total_users?: number;
+  scope?: 'org' | 'self';
+  /** @deprecated backend may omit; prefer total_users */
+  total_employees?: number;
+  clocked_in?: number;
+}
+
+export type LiveTrackingStatus = 'active' | 'in_transit' | 'idle' | 'gps_off' | 'offline';
+
+export interface LiveEmployeeRow {
+  employee_id: string;
+  employee_name: string;
+  employee_initials?: string;
+  avatar_url?: string | null;
+  designation?: string | null;
+  role?: string | null;
+  city?: string | null;
+  status?: LiveTrackingStatus | string;
+  last_captured_at?: string | null;
+  last_latitude?: number | null;
+  last_longitude?: number | null;
+  last_address?: string | null;
+  clock_in_time?: string | null;
+  last_ping_label?: string | null;
+}
+
+export interface LiveTrackingPanel {
+  items: LiveEmployeeRow[];
+  stats?: Record<string, number>;
+  gps_ping_interval_minutes?: number;
+  gps_off_threshold_minutes?: number;
+}
+
+export function getAttendanceDashboardSummary(date?: string) {
+  const q = date ? `?date=${encodeURIComponent(date)}` : '';
+  return apiRequest<AttendanceSummary>(`/attendance/dashboard-summary${q}`);
+}
+
+export type AttendanceDayEntry = {
+  employee_id: string;
+  employee_name: string;
+  employee_initials?: string;
+  avatar_url?: string | null;
+  designation?: string | null;
+  roles: string[];
+  city?: string | null;
+  access_surface?: 'web' | 'mobile' | 'both' | string;
+  attendance_record_id: string;
+  clock_in_time?: string | null;
+  clock_out_time?: string | null;
+  working_hours?: number | null;
+  status?: string | null;
+  daily_status: 'present' | 'absent' | 'leave' | string;
+  on_location: boolean;
+  last_latitude?: number | null;
+  last_longitude?: number | null;
+  last_address?: string | null;
+  last_captured_at?: string | null;
+};
+
+export type AttendanceDayBoard = {
+  date: string;
+  items: AttendanceDayEntry[];
+  clocked_in: number;
+  clocked_out?: number;
+  on_location: number;
+  off_location: number;
+};
+
+export function getAttendanceDayBoard(
+  date?: string,
+  audience: 'employee' | 'user' = 'employee',
+) {
+  const params = new URLSearchParams({ audience });
+  if (date) params.set('date', date);
+  const q = `?${params.toString()}`;
+  return apiRequest<AttendanceDayBoard>(`/attendance/day-board${q}`);
+}
+
+export type EmployeeMonthAttendance = {
+  employee_id: string;
+  month: string;
+  working_days: string[];
+  days: { date: string; status: 'present' | 'absent' | string }[];
+};
+
+export function getEmployeeMonthAttendance(employeeId: string, month: string) {
+  const params = new URLSearchParams({ employee_id: employeeId, month });
+  return apiRequest<EmployeeMonthAttendance>(`/attendance/employee-month?${params.toString()}`);
+}
+
+export function getLiveTrackingPanel() {
+  return apiRequest<LiveTrackingPanel>('/attendance/panel');
+}
+
+export type EmployeeLiveDetail = {
+  employee_id: string;
+  employee_name?: string;
+  employee_initials?: string;
+  avatar_url?: string | null;
+  role?: string | null;
+  designation?: string | null;
+  region_label?: string | null;
+  employee_code?: string | null;
+  status?: string | null;
+  status_label?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+  last_ping_at?: string | null;
+  last_ping_label?: string | null;
+  clock_in_time?: string | null;
+  late_minutes?: number | null;
+  working_duration_label?: string | null;
+  distance_today_km?: number | null;
+  visits_completed?: number | null;
+  visits_assigned?: number | null;
+  battery_percent?: number | null;
+  visits?: Array<{
+    id: string;
+    store_name?: string | null;
+    dealer_name?: string | null;
+    status?: string;
+    started_at?: string | null;
+    scheduled_at?: string | null;
+    duration_label?: string | null;
+  }>;
+  attendance_record_id?: string | null;
+  gps_status?: string | null;
+};
+
+export function getEmployeeLiveDetail(employeeId: string) {
+  return apiRequest<EmployeeLiveDetail>(`/attendance/live/${employeeId}`);
+}
+
+export type LocationTrailPoint = {
+  id: string;
+  attendance_record_id: string;
+  employee_id: string;
+  captured_at: string;
+  latitude: number;
+  longitude: number;
+  address: string | null;
+  accuracy_meters: number | null;
+  source: string;
+};
+
+export type LocationTrail = {
+  attendance_record_id: string | null;
+  employee_id: string;
+  points: LocationTrailPoint[];
+  date?: string | null;
+};
+
+export function getAttendanceTrail(recordId: string) {
+  return apiRequest<LocationTrail>(`/attendance/records/${recordId}/trail`);
+}
+
+export function getEmployeeTrailByDate(employeeId: string, date?: string) {
+  const qs = date ? `?date=${encodeURIComponent(date)}` : '';
+  return apiRequest<LocationTrail>(`/attendance/live/${employeeId}/trail${qs}`);
+}
