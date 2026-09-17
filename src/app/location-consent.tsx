@@ -7,7 +7,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Colors, Radius } from '@/constants/theme';
 import { setLocationConsent } from '@/lib/locationConsent';
-import { continueLocationAction } from '@/lib/locationGate';
+import { requestAlwaysLocationAccess, locationRequiredReason } from '@/lib/locationPermissions';
+import { resumeAfterLocationReady } from '@/lib/attendanceActions';
 
 const SPEC = [
   { label: 'Data Collected', value: 'GPS coordinates' },
@@ -27,7 +28,16 @@ export default function LocationConsentScreen() {
     if (!consent) return;
     setLoading(true);
     await setLocationConsent(true);
-    await continueLocationAction(target);
+    const result = await requestAlwaysLocationAccess();
+    if (result !== 'ok') {
+      router.replace({
+        pathname: '/location-required',
+        params: { reason: locationRequiredReason(result), next: target },
+      });
+      setLoading(false);
+      return;
+    }
+    await resumeAfterLocationReady(target);
     setLoading(false);
   }
 
@@ -37,10 +47,10 @@ export default function LocationConsentScreen() {
         <View style={styles.iconRing}>
           <Ionicons name="location" size={28} color={Colors.brand} />
         </View>
-        <Text style={styles.title}>Turn on location access</Text>
+        <Text style={styles.title}>Turn on location</Text>
         <Text style={styles.copy}>
-          We track your location only during your shift to verify clock-ins and dealer visits. Location is
-          captured at clock-in, clock-out, and each dealer check-in. It stops the moment you clock out.
+          We track your location only during your shift to clock in and clock out as the dealer visit
+          location. Capture each dealer&apos;s check-in/check-out moment when you clock out.
         </Text>
       </View>
 

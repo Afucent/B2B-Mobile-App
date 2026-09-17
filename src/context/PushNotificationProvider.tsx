@@ -10,9 +10,11 @@ import {
   resolveNotificationRoute,
   type AppNotification,
 } from '@/lib/api/notifications';
+import { promptInstallPermissionsOnLogin } from '@/lib/locationPermissions';
 import {
   clearPushRegistration,
   presentLocalAlert,
+  requestNotificationPermissions,
   syncPushRegistration,
 } from '@/lib/pushNotifications';
 
@@ -62,7 +64,11 @@ export function PushNotificationProvider({ children }: { children: ReactNode }) 
       return;
     }
 
-    void syncPushRegistration();
+    void (async () => {
+      await requestNotificationPermissions();
+      await promptInstallPermissionsOnLogin();
+      await syncPushRegistration();
+    })();
 
     const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data as Record<string, unknown> | undefined;

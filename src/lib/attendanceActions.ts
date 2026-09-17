@@ -9,6 +9,7 @@ import {
   startLocation,
   type AttendanceRecord,
 } from '@/lib/api/attendance';
+import { getFieldOperationsSettings } from '@/lib/api/org';
 import { getMyVisits, type FieldVisit } from '@/lib/api/visits';
 import {
   backgroundStartErrorMessage,
@@ -18,13 +19,23 @@ import {
   isBackgroundLocationRunning,
   persistPingIntervalMinutes,
   persistTrackingActive,
+  markLocationPingSent,
   scheduleBatteryOptimizationPrompt,
   sendImmediateStartupPing,
   startBackgroundLocationResult,
   warmBackgroundTrackingSession,
 } from '@/lib/backgroundLocation';
-import { requestLocation, type DeviceLocation } from '@/lib/location';
-import { routeForLocationAction } from '@/lib/locationGate';
+import { diagnoseLocation, requestLocation, type DeviceLocation } from '@/lib/location';
+import {
+  locationRequiredReason,
+  requestForegroundLocationAccess,
+} from '@/lib/locationPermissions';
+import {
+  routeForLocationAction,
+  setPendingAttendanceAction,
+  takePendingAttendanceAction,
+  type PendingAttendanceAction,
+} from '@/lib/locationGate';
 
 /** After location consent / settings, return here — never bounce Home → Clock tab. */
 export const HOME_RETURN = '/(app)';
@@ -76,8 +87,66 @@ function hoursFromRange(inTime?: string | null, outTime?: string | null) {
 }
 
 /** Same pre-check Home + Clock use before clock-in / tracking / clock-out. */
-export async function gateAttendanceLocation(returnTo: string): Promise<Href | null> {
-  return routeForLocationAction(returnTo);
+export async function gateAttendanceLocation(
+  returnTo: string,
+  options?: { requireAlways?: boolean; pending?: PendingAttendanceAction },
+): Promise<Href | null> {
+  if (options?.pending) {
+    await setPendingAttendanceAction(options.pending);
+  }
+  const block = await routeForLocationAction(returnTo, { requireAlways: options?.requireAlways });
+  if (block) return block;
+
+  const status = await diagnoseLocation({ always: options?.requireAlways });
+  if (status === 'ok') {
+    await setPendingAttendanceAction(null);
+    return null;
+  }
+  // Always-on tracking: show Location Required first (OS “Allow all the time” is requested there).
+  if (options?.requireAlways) {
+    return {
+      pathname: '/location-required',
+      params: {
+        reason: status === 'denied' ? 'denied' : status === 'services_off' ? 'off' : 'background',
+        next: returnTo,
+      },
+    } as Href;
+  }
+  if (status === 'undetermined') {
+    const result = await requestForegroundLocationAccess();
+    if (result === 'ok') {
+      await setPendingAttendanceAction(null);
+      return null;
+    }
+    return {
+      pathname: '/location-required',
+      params: { reason: locationRequiredReason(result), next: returnTo },
+    } as Href;
+  }
+  return null;
+}
+
+/** After in-app consent / Settings, start tracking if that was the pending action. */
+export async function resumeAfterLocationReady(fallbackNext: string) {
+  const pending = await takePendingAttendanceAction();
+  if (pending?.type === 'start-tracking') {
+    const result = await executeStartTracking(pending.pingMinutes, null, pending.returnTo);
+    if (!result.ok && result.error.kind === 'navigate') {
+      await setPendingAttendanceAction(pending);
+      router.replace(result.error.href);
+      return false;
+    }
+    router.replace(pending.returnTo as Href);
+    return result.ok;
+  }
+  const next = pending?.type === 'resume' ? pending.returnTo : fallbackNext;
+  const block = await routeForLocationAction(next, { requireAlways: true });
+  if (block) {
+    router.replace(block);
+    return false;
+  }
+  router.replace(next as Href);
+  return true;
 }
 
 export async function executeClockIn(options?: {
@@ -198,12 +267,22 @@ export async function executeStartTracking(
   beginTrackingStartGate();
   try {
     const next = existingLoc ?? (await requestLocation());
-    await persistPingIntervalMinutes(pingMinutes);
+    let intervalMinutes = pingMinutes;
+    try {
+      const settings = await getFieldOperationsSettings();
+      if (settings.gps_ping_interval_minutes != null) {
+        intervalMinutes = Math.min(Math.max(settings.gps_ping_interval_minutes, 1), 60);
+      }
+    } catch {
+      // Keep the interval already shown on Home / Clock.
+    }
+    await persistPingIntervalMinutes(intervalMinutes);
     await warmBackgroundTrackingSession();
 
     // Server session must exist before any location-ping (otherwise API returns 403).
     await startLocation(next.latitude, next.longitude, undefined, next.address);
     await persistTrackingActive(true);
+    await markLocationPingSent(Date.now());
 
     const gps = await startBackgroundLocationResult();
     if (!gps.ok) {

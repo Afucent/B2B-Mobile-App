@@ -42,8 +42,15 @@ export function isPlaceholderApiBase(url: string) {
 }
 
 function configuredApiBase(): string | null {
-  const configured = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '');
-  return configured || null;
+  const fromEnv = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '') || null;
+  if (fromEnv && !isPlaceholderApiBase(fromEnv) && !/stage-fsa\.afbex\.com/i.test(fromEnv)) {
+    return fromEnv;
+  }
+  const extra = (Constants.expoConfig?.extra as { apiUrl?: string } | undefined)?.apiUrl
+    ?.trim()
+    .replace(/\/$/, '');
+  if (extra && !isPlaceholderApiBase(extra)) return extra;
+  return fromEnv && !isPlaceholderApiBase(fromEnv) ? fromEnv : null;
 }
 
 export function hydrateApiBaseCache(url: string | null | undefined) {

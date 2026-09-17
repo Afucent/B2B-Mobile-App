@@ -150,10 +150,19 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
   const onDuty = isClockedIn;
   const clockTime = today?.record?.clock_in_time ? formatClock(today.record.clock_in_time) : null;
 
-  async function withGate(action: BusyAction, run: () => Promise<void>) {
+  async function withGate(
+    action: BusyAction,
+    run: () => Promise<void>,
+    gate?: { requireAlways?: boolean; pingMinutes?: number },
+  ) {
     if (busyRef.current) return;
-    // Return to Home after location consent — do not bounce to Clock tab.
-    const block = await gateAttendanceLocation(HOME_RETURN);
+    const block = await gateAttendanceLocation(HOME_RETURN, {
+      requireAlways: gate?.requireAlways,
+      pending:
+        action === 'start-tracking' && gate?.pingMinutes != null
+          ? { type: 'start-tracking', returnTo: HOME_RETURN, pingMinutes: gate.pingMinutes }
+          : undefined,
+    });
     if (block) {
       router.push(block as Href);
       return;
@@ -205,17 +214,21 @@ export default function EmployeeDashboard({ refreshKey = 0 }: Props) {
       Alert.alert('Start Tracking', 'Clock in first, then start live tracking.');
       return;
     }
-    await withGate('start-tracking', async () => {
-      const result = await executeStartTracking(pingMinutes, null, HOME_RETURN);
-      if (!result.ok) {
+    await withGate(
+      'start-tracking',
+      async () => {
+        const result = await executeStartTracking(pingMinutes, null, HOME_RETURN);
+        if (!result.ok) {
+          await refreshStatus();
+          await load();
+          handleActionFailure(result.error, 'Start Tracking');
+          return;
+        }
         await refreshStatus();
         await load();
-        handleActionFailure(result.error, 'Start Tracking');
-        return;
-      }
-      await refreshStatus();
-      await load();
-    });
+      },
+      { requireAlways: true, pingMinutes },
+    );
   }
 
   async function onEndTracking() {

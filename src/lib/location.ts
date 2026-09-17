@@ -1,5 +1,12 @@
 import * as Location from 'expo-location';
-import { Linking } from 'react-native';
+import { Linking, Platform } from 'react-native';
+
+import {
+  diagnoseLocation as diagnoseLocationPermissions,
+  requestAlwaysLocationAccess,
+  requestForegroundLocationAccess,
+  type AlwaysLocationResult,
+} from '@/lib/locationPermissions';
 
 export interface DeviceLocation {
   latitude: number;
@@ -8,19 +15,31 @@ export interface DeviceLocation {
   address: string | null;
 }
 
-export type LocationBlockReason = 'ok' | 'services_off' | 'denied' | 'undetermined';
+export type LocationBlockReason = 'ok' | 'services_off' | 'denied' | 'undetermined' | 'background';
 
-export async function diagnoseLocation(): Promise<LocationBlockReason> {
-  const enabled = await Location.hasServicesEnabledAsync();
-  if (!enabled) return 'services_off';
-  const permission = await Location.getForegroundPermissionsAsync();
-  if (permission.status === 'granted') return 'ok';
-  if (permission.status === 'denied' && permission.canAskAgain === false) return 'denied';
-  if (permission.status === 'denied') return 'denied';
-  return 'undetermined';
+export async function diagnoseLocation(opts?: { always?: boolean }): Promise<LocationBlockReason> {
+  const status = await diagnoseLocationPermissions(opts);
+  return status;
 }
 
+export { requestAlwaysLocationAccess, requestForegroundLocationAccess };
+export type { AlwaysLocationResult };
+
 export async function openDeviceSettings() {
+  await openAppLocationSettings();
+}
+
+/** Opens the system Location permission page (Allow all the time lives here, not in the app). */
+export async function openAppLocationSettings() {
+  if (Platform.OS === 'android') {
+    const foreground = await Location.getForegroundPermissionsAsync();
+    if (foreground.status !== Location.PermissionStatus.GRANTED) {
+      await Location.requestForegroundPermissionsAsync();
+    }
+    // Android 11+ only adds "Allow all the time" to this page after a background-permission request.
+    await Location.requestBackgroundPermissionsAsync().catch(() => undefined);
+    return;
+  }
   await Linking.openSettings();
 }
 

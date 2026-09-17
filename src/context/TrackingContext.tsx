@@ -38,7 +38,7 @@ type TrackingContextValue = {
 const TrackingContext = createContext<TrackingContextValue | null>(null);
 
 /** Fallback only when org settings are not loaded yet. */
-const DEFAULT_PING_MINUTES = 10;
+const DEFAULT_PING_MINUTES = 1;
 
 export function TrackingProvider({ children }: { children: ReactNode }) {
   const { status } = useAuth();
@@ -149,7 +149,8 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
     }
     const id = setInterval(() => {
       void publishGpsRuntimeStatus('heartbeat');
-    }, 60_000);
+      void sendCatchUpTrackingPingIfDue();
+    }, 20_000);
     void publishGpsRuntimeStatus('tracking_active');
     return () => clearInterval(id);
   }, [status, trackingActive]);

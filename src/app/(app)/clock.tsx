@@ -182,9 +182,19 @@ function ClockContent() {
 
   const shiftLabel = formatShiftRange(settings);
 
-  async function withGate(action: BusyAction, run: () => Promise<void>) {
+  async function withGate(
+    action: BusyAction,
+    run: () => Promise<void>,
+    gate?: { requireAlways?: boolean; pingMinutes?: number },
+  ) {
     if (busyRef.current) return;
-    const block = await gateAttendanceLocation(CLOCK_RETURN);
+    const block = await gateAttendanceLocation(CLOCK_RETURN, {
+      requireAlways: gate?.requireAlways,
+      pending:
+        action === 'start-tracking' && gate?.pingMinutes != null
+          ? { type: 'start-tracking', returnTo: CLOCK_RETURN, pingMinutes: gate.pingMinutes }
+          : undefined,
+    });
     if (block) {
       router.push(block as Href);
       return;
@@ -234,15 +244,19 @@ function ClockContent() {
       Alert.alert('Start Tracking', 'Clock in first, then start live tracking.');
       return;
     }
-    await withGate('start-tracking', async () => {
-      const result = await executeStartTracking(pingMinutes, null, CLOCK_RETURN);
-      if (!result.ok) {
+    await withGate(
+      'start-tracking',
+      async () => {
+        const result = await executeStartTracking(pingMinutes, null, CLOCK_RETURN);
+        if (!result.ok) {
+          await refreshStatus();
+          handleActionFailure(result.error, 'Start Tracking');
+          return;
+        }
         await refreshStatus();
-        handleActionFailure(result.error, 'Start Tracking');
-        return;
-      }
-      await refreshStatus();
-    });
+      },
+      { requireAlways: true, pingMinutes },
+    );
   }
 
   async function onEndTracking() {

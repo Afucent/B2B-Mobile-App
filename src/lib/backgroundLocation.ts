@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import * as SecureStore from 'expo-secure-store';
 import * as TaskManager from 'expo-task-manager';
-import { AppState, Linking, PermissionsAndroid, Platform } from 'react-native';
+import { AppState, Linking, Platform } from 'react-native';
 
 import { ensureApiBaseReady, hydrateApiBaseCache, isPlaceholderApiBase } from '@/lib/api/client';
 import { pingLocation } from '@/lib/api/attendance';
@@ -15,8 +15,8 @@ const PING_INTERVAL_KEY = 'afbex.ping_interval_minutes';
 const LAST_PING_KEY = 'afbex.last_location_ping_at';
 const TRACKING_ACTIVE_KEY = 'afbex.tracking_active';
 const BATTERY_PROMPTED_KEY = 'afbex.battery_unrestricted_prompted';
-/** Fallback only when org settings have not been loaded yet (portal default is often 10). */
-const DEFAULT_PING_MINUTES = 10;
+/** Fallback only when org settings have not been loaded yet. */
+const DEFAULT_PING_MINUTES = 1;
 /** Native GPS wake interval; server pings remain throttled to the org interval (min 1 min). */
 const NATIVE_GPS_INTERVAL_MS = 15_000;
 const LOG_PREFIX = '[AFBEX-GPS]';
@@ -330,7 +330,9 @@ export async function sendThrottledTrackingPing(
     const generation = acquirePingLock(checkedAt);
     pendingPing = null;
     try {
-      await pingLocation(latitude, longitude, accuracy ?? undefined);
+      const pingAccuracy =
+        accuracy != null && Number.isFinite(accuracy) && accuracy <= 45 ? accuracy : undefined;
+      await pingLocation(latitude, longitude, pingAccuracy);
       if (generation !== pingGeneration) return false;
       await markLocationPingSent(Date.now());
       logGps('ping_ok', { latitude, longitude, accuracy });
@@ -354,7 +356,6 @@ export async function sendThrottledTrackingPing(
       const classified = classifyPingServerError(status, message);
 
       if (status === 429) {
-        await markLocationPingSent(Date.now());
         logGps('ping_throttled_by_server');
         void emitMobileGpsLog({
           event: 'location.ping_client',
@@ -485,7 +486,7 @@ export async function sendImmediateStartupPing() {
       position.coords.latitude,
       position.coords.longitude,
       position.coords.accuracy,
-      true,
+      false,
     );
   } catch (err) {
     logGps('startup ping failed', err);
@@ -575,15 +576,6 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
   }
 });
 
-async function requestNotificationPermission() {
-  if (Platform.OS !== 'android' || Platform.Version < 33) return;
-  try {
-    await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
-  } catch {
-    // Foreground-service notification may still appear on older / OEM builds.
-  }
-}
-
 async function promptUnrestrictedBatteryOnce() {
   if (Platform.OS !== 'android') return;
   try {
@@ -605,21 +597,10 @@ async function ensureLocationPermissions(): Promise<true | PermissionFailure> {
   try {
     const enabled = await Location.hasServicesEnabledAsync();
     if (!enabled) return 'services_off';
-
-    const foreground = await Location.requestForegroundPermissionsAsync();
-    if (foreground.status !== 'granted') return 'foreground_denied';
-
-    await requestNotificationPermission();
-    if (Platform.OS === 'android') {
-      await new Promise((resolve) => setTimeout(resolve, 400));
-    }
-
-    const background = await Location.requestBackgroundPermissionsAsync().catch(() => null);
-    const currentBg = await Location.getBackgroundPermissionsAsync().catch(() => null);
-    const granted =
-      background?.status === Location.PermissionStatus.GRANTED ||
-      currentBg?.status === Location.PermissionStatus.GRANTED;
-    if (!granted) return 'background_denied';
+    // Never request OS dialogs here — that backgrounds the app and Android 12+
+    // then refuses to start the location foreground service (common APK failure).
+    const foreground = await Location.getForegroundPermissionsAsync();
+    if (foreground.status !== Location.PermissionStatus.GRANTED) return 'foreground_denied';
     return true;
   } catch (err) {
     logGps('permission check failed', err);
@@ -644,9 +625,10 @@ async function waitUntilAppActive(timeoutMs = 20_000): Promise<boolean> {
 }
 
 const NATIVE_LOCATION_OPTIONS: Location.LocationTaskOptions = {
-  accuracy: Location.Accuracy.High,
+  accuracy: Location.Accuracy.Balanced,
   timeInterval: NATIVE_GPS_INTERVAL_MS,
-  distanceInterval: 1,
+  // 0 = time-based updates even when the phone is stationary (APK OEM default was 1m).
+  distanceInterval: 0,
   deferredUpdatesInterval: 0,
   deferredUpdatesDistance: 0,
   pausesUpdatesAutomatically: false,
@@ -658,7 +640,7 @@ const NATIVE_LOCATION_OPTIONS: Location.LocationTaskOptions = {
     notificationColor: '#1A3A3A',
     killServiceOnDestroy: false,
   },
-  mayShowUserSettingsDialog: true,
+  mayShowUserSettingsDialog: false,
 };
 
 export async function isBackgroundLocationRunning() {

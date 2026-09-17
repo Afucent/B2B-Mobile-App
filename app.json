@@ -98,13 +98,15 @@
           "cameraPermission": "AFBEX uses the camera to capture proof of dealer visits."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "./plugins/withAndroidBackgroundLocation.js"
     ],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
       "router": {},
+      "apiUrl": "https://api-stage.afbex.com/api/v1",
       "eas": {
         "projectId": "7e183f2e-a230-4e87-b723-2096e831c8cd"
       }

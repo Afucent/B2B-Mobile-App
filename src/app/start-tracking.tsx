@@ -16,9 +16,9 @@ import {
   type EmployeeLiveDetail,
   type TodayStatus,
 } from '@/lib/api/attendance';
-import { executeEndTracking, executeStartTracking } from '@/lib/attendanceActions';
+import { executeEndTracking, executeStartTracking, gateAttendanceLocation } from '@/lib/attendanceActions';
 import { durationLabel, formatClock, formatKm } from '@/lib/format';
-import { requestLocation, type DeviceLocation } from '@/lib/location';
+import { getLastKnownLocation, requestLocation, type DeviceLocation } from '@/lib/location';
 
 export default function StartTrackingScreen() {
   const { user } = useAuth();
@@ -60,26 +60,8 @@ export default function StartTrackingScreen() {
 
   useEffect(() => {
     void (async () => {
-      try {
-        setLoc(await requestLocation());
-      } catch (err) {
-        const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : '';
-        if (code === 'services_off') {
-          router.replace({
-            pathname: '/location-required',
-            params: { reason: 'off', next: '/start-tracking' },
-          });
-          return;
-        }
-        if (code === 'denied') {
-          router.replace({
-            pathname: '/location-required',
-            params: { reason: 'denied', next: '/start-tracking' },
-          });
-          return;
-        }
-        setError(err instanceof Error ? err.message : 'Unable to read GPS.');
-      }
+      const last = await getLastKnownLocation();
+      if (last) setLoc(last);
     })();
   }, []);
 
@@ -97,7 +79,15 @@ export default function StartTrackingScreen() {
     setBusy(true);
     setError('');
     try {
-      const result = await executeStartTracking(pingMinutes, loc);
+      const block = await gateAttendanceLocation('/start-tracking', {
+        requireAlways: true,
+        pending: { type: 'start-tracking', returnTo: '/start-tracking', pingMinutes },
+      });
+      if (block) {
+        router.push(block);
+        return;
+      }
+      const result = await executeStartTracking(pingMinutes, loc, '/start-tracking');
       if (!result.ok) {
         await refreshStatus();
         if (result.error.kind === 'navigate') {
