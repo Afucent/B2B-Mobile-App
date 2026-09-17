@@ -4,6 +4,17 @@ export interface OrgProfile {
   id: string;
   name: string;
   company_code: string;
+  industry_type?: string;
+  industry_label?: string;
+  plan_name?: string | null;
+  plan_duration_months?: number | null;
+  status?: string;
+  admin?: {
+    name: string;
+    personal_email: string;
+    mobile?: string | null;
+    designation?: string | null;
+  };
   domain_name?: string | null;
   domain_email?: string | null;
   registered_address?: string | null;
@@ -29,7 +40,7 @@ export function getOrgProfile() {
 
 export function updateOrgProfile(data: Record<string, unknown>) {
   return apiRequest<OrgProfile>('/tenant/organization/profile', {
-    method: 'PUT',
+    method: 'PATCH',
     body: data,
   });
 }
@@ -54,6 +65,59 @@ export function getOrgPrivacy() {
 export function updateOrgPrivacy(data: Record<string, unknown>) {
   return apiRequest('/tenant/organization/privacy', {
     method: 'PUT',
+    body: data,
+  });
+}
+
+export function requestPlanUpgrade() {
+  return apiRequest<{ message: string }>('/tenant/organization/plan/upgrade-request', {
+    method: 'POST',
+  });
+}
+
+export interface OfficeLocation {
+  id: string;
+  name: string;
+  address: string;
+  radius_m: number;
+  status: string;
+}
+
+export interface GeofenceSettings {
+  default_geofence_radius_m: number;
+  enforce_geofence: boolean;
+  bypass_approval_required: boolean;
+  multiple_locations_enabled: boolean;
+  tracking_interval_minutes: number;
+  track_only_working_hours: boolean;
+  locations: OfficeLocation[];
+}
+
+export function getGeofenceSettings() {
+  return apiRequest<GeofenceSettings>('/tenant/organization/settings/geofence');
+}
+
+export function updateGeofenceSettings(data: Partial<Omit<GeofenceSettings, 'locations'>>) {
+  return apiRequest<GeofenceSettings>('/tenant/organization/settings/geofence', {
+    method: 'PATCH',
+    body: data,
+  });
+}
+
+export function resetGeofenceSettings() {
+  return apiRequest<GeofenceSettings>('/tenant/organization/settings/geofence/reset', {
+    method: 'POST',
+  });
+}
+
+export function createOfficeLocation(data: {
+  name: string;
+  address: string;
+  radius_m?: number;
+  status?: string;
+}) {
+  return apiRequest<OfficeLocation>('/tenant/organization/settings/locations', {
+    method: 'POST',
     body: data,
   });
 }

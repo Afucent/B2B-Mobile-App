@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 
 import { getMe, orgLogin, sendLoginOtp, verifyLoginOtp, type MeResponse } from '@/lib/api/auth';
 import { ApiRequestError } from '@/lib/api/client';
+import { clearGpsLogIdentity, setGpsLogIdentity } from '@/lib/axiomGps';
 import { clearToken, getCompanyCode, getToken, setCompanyCode, setToken } from '@/lib/storage';
 
 const MOBILE_ACCESS_MESSAGE =
@@ -11,6 +12,14 @@ function assertMobileAccess(me: MeResponse) {
   if (me.mobile_eligible === false || !me.organization || me.access_surface === 'platform') {
     throw new ApiRequestError(MOBILE_ACCESS_MESSAGE, 403);
   }
+}
+
+async function bindGpsLogIdentity(me: MeResponse) {
+  await setGpsLogIdentity({
+    employeeId: me.id,
+    organizationId: me.organization?.id ?? null,
+    employeeName: me.name,
+  }).catch(() => undefined);
 }
 
 type AuthStatus = 'loading' | 'signedOut' | 'signedIn';
@@ -43,15 +52,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setStatus('signedOut');
       return;
     }
+    await setToken(token).catch(() => undefined);
     try {
       const me = await getMe();
       assertMobileAccess(me);
+      await bindGpsLogIdentity(me);
       setUser(me);
       setStatus('signedIn');
-    } catch {
-      await clearToken();
-      setUser(null);
-      setStatus('signedOut');
+    } catch (err) {
+      if (err instanceof ApiRequestError && (err.status === 401 || err.status === 403)) {
+        await clearGpsLogIdentity().catch(() => undefined);
+        await clearToken();
+        setUser(null);
+        setStatus('signedOut');
+        return;
+      }
+      // Keep the token on network/server errors so background pings still authenticate
+      // when the app is closed and the screen is off.
+      setStatus('signedIn');
     }
   }, []);
 
@@ -67,9 +85,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setCompany(code);
       const me = await getMe();
       assertMobileAccess(me);
+      await bindGpsLogIdentity(me);
       setUser(me);
       setStatus('signedIn');
     } catch (err) {
+      await clearGpsLogIdentity().catch(() => undefined);
       await clearToken();
       setUser(null);
       setStatus('signedOut');
@@ -85,9 +105,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setCompany(code);
       const me = await getMe();
       assertMobileAccess(me);
+      await bindGpsLogIdentity(me);
       setUser(me);
       setStatus('signedIn');
     } catch (err) {
+      await clearGpsLogIdentity().catch(() => undefined);
       await clearToken();
       setUser(null);
       setStatus('signedOut');
@@ -102,6 +124,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    const { forceStopBackgroundLocation } = await import('@/lib/backgroundLocation');
+    await forceStopBackgroundLocation().catch(() => undefined);
+    await clearGpsLogIdentity().catch(() => undefined);
+    const { clearPushRegistration } = await import('@/lib/pushNotifications');
+    await clearPushRegistration().catch(() => undefined);
     await clearToken();
     setUser(null);
     setStatus('signedOut');
@@ -110,6 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     try {
       const me = await getMe();
+      await bindGpsLogIdentity(me);
       setUser(me);
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 401) {

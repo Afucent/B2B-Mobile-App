@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 
 import { Colors, Radius } from '@/constants/theme';
 
@@ -14,10 +14,12 @@ export function PrimaryButton({ label, onPress, disabled, loading }: Props) {
     <Pressable
       onPress={onPress}
       disabled={disabled || loading}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
       style={({ pressed }) => [
         styles.button,
         (disabled || loading) && styles.disabled,
-        pressed && !disabled && styles.pressed,
+        pressed && !disabled && !loading && styles.pressed,
       ]}>
       {loading ? (
         <ActivityIndicator color="#fff" />
@@ -36,16 +38,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
+    shadowColor: Colors.brand,
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   },
   disabled: {
-    opacity: 0.6,
+    opacity: 0.55,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   pressed: {
     backgroundColor: Colors.brandDark,
+    transform: [{ scale: 0.985 }],
   },
   label: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+    letterSpacing: 0.2,
   },
 });

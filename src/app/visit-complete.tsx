@@ -8,6 +8,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { useContentBottomInset } from '@/components/ui/SafeScreen';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { uploadMedia } from '@/lib/api/uploads';
 import { completeVisit, createUnplannedVisit, getVisitAssignOptions } from '@/lib/api/visits';
@@ -15,6 +16,7 @@ import { formatClock, formatLongDate } from '@/lib/format';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
 
 export default function VisitCheckInSubmitScreen() {
+  const bottomInset = useContentBottomInset(24);
   const params = useLocalSearchParams<{
     visitId?: string;
     dealerId?: string;
@@ -139,7 +141,7 @@ export default function VisitCheckInSubmitScreen() {
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Check-in" onBack={() => router.back()} />
-      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
+      <KeyboardSafeScrollView contentContainerStyle={[styles.body, { paddingBottom: bottomInset }]}>
         <View style={styles.selectedCard}>
           <Text style={styles.kicker}>SELECTED VISIT</Text>
           <Text style={styles.dealer}>{title}</Text>
@@ -224,7 +226,7 @@ export default function VisitCheckInSubmitScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { padding: Spacing.md, gap: 10, paddingBottom: 32 },
+  body: { padding: Spacing.md, gap: 10 },
   selectedCard: {
     backgroundColor: Colors.brandSoft,
     borderRadius: Radius.lg,

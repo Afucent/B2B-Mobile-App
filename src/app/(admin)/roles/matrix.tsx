@@ -35,11 +35,13 @@ const COLUMN_LABELS: Record<MatrixColumn | 'full', string> = {
 };
 
 const MODULE_HINTS: Record<string, string> = {
-  leave_requests: 'Create = Apply leave · Edit = Approve / Reject',
+  leave_requests: 'Create · Edit = Approve / Reject',
   attendance: 'Admin attendance board (View). Clock is under My Attendance & Leave',
-  live_location: 'Admin live map only (View). Start/End is User Tracking',
+  live_location: 'Admin live map only (View). Start/End is Employee start & end location',
   my_attendance_leave: 'View = open page · Create = clock in/out + apply leave',
-  user_tracking: 'Create = Start / End user tracking',
+  user_tracking: 'View = Start / End location controls',
+  field_visits: 'View = My Visits · Create = check-in / complete assigned visits',
+  visit_assign: 'Assign dealer visits to employees',
   leave_types: 'Create / Edit / Delete leave type configs',
   team_calendar: 'View-only team leave calendar',
   role_library: 'Create / delete custom roles',
@@ -125,6 +127,16 @@ function toggleColumn(
   for (const id of idsForColumn(row, column)) {
     if (checked) next.add(id);
     else next.delete(id);
+  }
+  // Unchecking View clears the whole row (matches web).
+  if (column === 'view' && !checked) {
+    for (const col of ['create', 'edit', 'delete'] as MatrixColumn[]) {
+      for (const id of idsForColumn(row, col)) next.delete(id);
+    }
+  }
+  // Checking a write action also grants View.
+  if (column !== 'view' && checked && row.view) {
+    next.add(row.view.id);
   }
   return next;
 }

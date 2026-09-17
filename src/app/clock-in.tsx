@@ -1,17 +1,19 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import FieldOpsSettingsSummary from '@/components/FieldOpsSettingsSummary';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
 import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
-import { clockIn, getTodayStatus } from '@/lib/api/attendance';
+import { executeClockIn, CLOCK_RETURN } from '@/lib/attendanceActions';
+import { getTodayStatus } from '@/lib/api/attendance';
 import { formatClock, formatLongDate } from '@/lib/format';
-import { requestLocation } from '@/lib/location';
 
 export default function ClockInScreen() {
+  const insets = useSafeAreaInsets();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(new Date());
@@ -26,7 +28,7 @@ export default function ClockInScreen() {
     void (async () => {
       const status = await getTodayStatus().catch(() => null);
       if (status?.is_clocked_in) {
-        router.replace('/(app)/clock');
+        router.replace(CLOCK_RETURN);
       }
     })();
   }, []);
@@ -35,9 +37,20 @@ export default function ClockInScreen() {
     setLoading(true);
     setError('');
     try {
-      // GPS is required by the attendance API, but this screen is attendance-only.
-      const loc = await requestLocation();
-      const record = await clockIn(loc.latitude, loc.longitude);
+      const result = await executeClockIn({ returnTo: CLOCK_RETURN });
+      if (!result.ok) {
+        if (result.error.kind === 'navigate') {
+          router.replace(result.error.href);
+          return;
+        }
+        if (result.error.kind === 'already_clocked_in') {
+          router.replace(CLOCK_RETURN);
+          return;
+        }
+        setError(result.error.kind === 'message' ? result.error.message : 'Clock-in failed.');
+        return;
+      }
+      const { record, loc } = result.data;
       router.replace({
         pathname: '/clock-in-confirmed',
         params: {
@@ -46,22 +59,6 @@ export default function ClockInScreen() {
           accuracy: String(loc.accuracy ?? 3),
         },
       });
-    } catch (err) {
-      const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : '';
-      if (code === 'services_off') {
-        router.replace({ pathname: '/location-required', params: { reason: 'off', next: '/clock-in' } });
-        return;
-      }
-      if (code === 'denied') {
-        router.replace({ pathname: '/location-required', params: { reason: 'denied', next: '/clock-in' } });
-        return;
-      }
-      const message = err instanceof Error ? err.message : 'Clock-in failed.';
-      if (message.toLowerCase().includes('already clocked in')) {
-        router.replace('/(app)/clock');
-        return;
-      }
-      setError(message);
     } finally {
       setLoading(false);
     }
@@ -70,7 +67,10 @@ export default function ClockInScreen() {
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Clock In" onBack={() => router.back()} />
-      <View style={styles.sheet}>
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={[styles.sheet, { paddingBottom: insets.bottom + 20 }]}
+        scrollIndicatorInsets={{ bottom: insets.bottom }}>
         <View style={styles.card}>
           <Text style={styles.badge}>ATTENDANCE</Text>
           <Text style={styles.title}>Mark attendance</Text>
@@ -92,14 +92,14 @@ export default function ClockInScreen() {
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
         <PrimaryButton label="Clock In" onPress={() => void onClockIn()} loading={loading} />
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.background },
-  sheet: { padding: 20, gap: 10, flex: 1 },
+  sheet: { padding: 20, gap: 10, flexGrow: 1 },
   card: {
     borderWidth: 1,
     borderColor: Colors.border,

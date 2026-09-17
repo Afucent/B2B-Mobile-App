@@ -20,8 +20,8 @@ export default function ForgotPasswordScreen() {
 
   async function onSend() {
     setError('');
-    if (!/^\d{6}$/.test(companyCode.trim())) {
-      setError('Enter a valid 6-digit company code.');
+    if (!/^\d{4}$/.test(companyCode.trim())) {
+      setError('Enter a valid 4-digit company code.');
       return;
     }
     if (!isEmail(identifier)) {
@@ -47,17 +47,17 @@ export default function ForgotPasswordScreen() {
       <ScreenHeader title="Reset password" onBack={() => router.back()} />
       <KeyboardSafeScrollView contentContainerStyle={styles.body}>
         <Text style={styles.copy}>
-          Enter the email or mobile linked to your account.{'\n'}We’ll send a verification code.
+          Enter the email linked to your account.{'\n'}We’ll send a 6-digit verification code.
         </Text>
         <TextField
           label="Company code"
           value={companyCode}
-          onChangeText={setCompanyCode}
-          placeholder="e.g. 100001"
-          autoCapitalize="characters"
+          onChangeText={(v) => setCompanyCode(v.replace(/\D/g, '').slice(0, 4))}
+          placeholder="e.g. 1001"
+          keyboardType="numeric"
         />
         <TextField
-          label="Email or mobile"
+          label="Email"
           value={identifier}
           onChangeText={setIdentifier}
           placeholder="you@company.com"

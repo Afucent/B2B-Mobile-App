@@ -1,5 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Stamp } from '@/components/ui/Stamp';
@@ -7,6 +8,7 @@ import { Colors } from '@/constants/theme';
 import { formatClock, formatDate } from '@/lib/format';
 
 export default function ClockInConfirmedScreen() {
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ time?: string; address?: string; accuracy?: string }>();
   const time = params.time ? formatClock(params.time) : formatClock(new Date().toISOString());
   const date = params.time ? formatDate(params.time) : formatDate(new Date());
@@ -29,7 +31,7 @@ export default function ClockInConfirmedScreen() {
           Live location is not started yet. Use Open Start Tracking from the Clock tab to open the map.
         </Text>
       </View>
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
         <PrimaryButton label="Back to Clock" onPress={() => router.replace('/(app)/clock')} />
       </View>
     </View>

@@ -6,24 +6,34 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'r
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import DashboardStats from '@/components/DashboardStats';
+import EmployeeDashboard from '@/components/EmployeeDashboard';
 import { FirstLoginPasswordModal } from '@/components/auth/FirstLoginPasswordModal';
 import { useToast } from '@/components/ui/Toast';
 import { APP_VERSION, Colors, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useAppRefresh } from '@/hooks/useAppRefresh';
 import { canViewDashboard } from '@/lib/tabNavigation';
 import { firstName, greetingForNow, initials } from '@/lib/format';
+import { getUnreadNotificationCount } from '@/lib/api/notifications';
 import { isFieldTrackingEnabled } from '@/lib/permissions';
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, refresh } = useAuth();
   const { showToast } = useToast();
-  const { isOrgAdmin, showMyAttendanceLeave, hasAnyAdminRead, has, canView } = usePermissions();
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const { isOrgAdmin,isEmployee, showMyAttendanceLeave, hasAnyAdminRead, has, canView, canCreate } = usePermissions();
   const [passwordModalDismissed, setPasswordModalDismissed] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const name = user?.name ?? 'there';
+
+  const loadUnread = useCallback(async () => {
+    await getUnreadNotificationCount()
+      .then((data) => setUnreadNotifications(data.unread_count))
+      .catch(() => setUnreadNotifications(0));
+  }, []);
+
+  const { refreshing, refreshKey, onRefresh } = useAppRefresh(loadUnread);
 
   const showDashboard = canViewDashboard({
     isOrgAdmin,
@@ -35,6 +45,19 @@ export default function HomeScreen() {
   });
 
   const mustChangePassword = Boolean(user?.must_change_password);
+  const dateLabel = new Intl.DateTimeFormat('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    timeZone: 'Asia/Kolkata',
+  }).format(new Date());
+
+  // Self Visit (field_visits) controls My Visits list / complete flow.
+  const canViewVisits =
+    canView('field_visits') ||
+    canCreate('field_visits') ||
+    canView('visit_history');
+
 
   useEffect(() => {
     if (!user?.must_change_password) {
@@ -42,39 +65,76 @@ export default function HomeScreen() {
     }
   }, [user?.must_change_password]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const tick = () => {
+      void getUnreadNotificationCount()
+        .then((data) => {
+          if (!cancelled) setUnreadNotifications(data.unread_count);
+        })
+        .catch(() => {
+          if (!cancelled) setUnreadNotifications(0);
+        });
+    };
+    tick();
+    const id = setInterval(tick, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [user?.id]);
+
   async function onPasswordChanged() {
     await refresh();
     showToast('Password changed successfully');
   }
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    setRefreshKey((k) => k + 1);
-    await new Promise((r) => setTimeout(r, 400));
-    setRefreshing(false);
-  }, []);
-
   return (
     <View style={styles.flex}>
       <View style={{ height: insets.top, backgroundColor: Colors.background }} />
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}>
         <View style={styles.topRow}>
           <View>
             <View style={styles.brandRow}>
-              <Text style={styles.logo}>AFBEX</Text>
+              {/* <Text style={styles.logo}>AFBEX</Text> */}
+              <Image
+                source={require('@/assets/images/logo_png.png')}
+                style={{
+                  width: 150,
+                  height: 40,
+                  resizeMode: 'contain',
+                }}
+              />
               <View style={styles.badge}>
                 <Text style={styles.badgeText}>v{APP_VERSION}</Text>
               </View>
             </View>
-            <Text style={styles.hello}>
+            {/* <Text style={styles.hello}>
               {greetingForNow()}, {firstName(name)}
-            </Text>
+            </Text> */}
+            <View style={styles.greeting}>
+              <Text style={styles.date}>{dateLabel.toUpperCase()}</Text>
+              <Text style={styles.greetingTitle}>{greetingForNow()}, {firstName(name)}</Text>
+              <Text style={styles.greetingCopy}>
+                {canViewVisits
+                  ? 'Your visits and route are ready.'
+                  : 'Your workday is ready to go.'}
+              </Text>
+            </View>
+
           </View>
           <View style={styles.topActions}>
             <Pressable style={styles.iconBtn} onPress={() => router.push('/notifications')}>
               <Ionicons name="notifications-outline" size={22} color={Colors.heading} />
+              {unreadNotifications > 0 ? (
+                <View style={styles.notifBadge}>
+                  <Text style={styles.notifBadgeText}>
+                    {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                  </Text>
+                </View>
+              ) : null}
             </Pressable>
             <Pressable onPress={() => router.push('/(app)/profile')}>
               {user?.avatar_url ? (
@@ -87,8 +147,9 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         </View>
-
-        {showDashboard ? (
+        {isEmployee ? (
+          <EmployeeDashboard refreshKey={refreshKey} />
+        ) : showDashboard ? (
           <DashboardStats refreshKey={refreshKey} />
         ) : (
           <View style={styles.card}>
@@ -110,7 +171,7 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
-  content: { padding: Spacing.md, paddingBottom: 32, gap: Spacing.md },
+  content: { padding: Spacing.md, gap: Spacing.md },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   logo: { fontSize: 26, fontWeight: '800', color: Colors.brand },
@@ -129,7 +190,21 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
+  notifBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.brand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  notifBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800' },
   avatar: { width: 36, height: 36, borderRadius: 18 },
   avatarFallback: {
     width: 36,
@@ -148,4 +223,8 @@ const styles = StyleSheet.create({
   },
   welcomeTitle: { fontSize: 18, fontWeight: '800', color: Colors.heading },
   welcomeCopy: { color: Colors.muted, lineHeight: 20 },
+  greeting: { gap: 6 },
+  date: { color: '#008C87', fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
+  greetingTitle: { color: Colors.brand, fontSize: 24, fontWeight: '800', letterSpacing: 0 },
+  greetingCopy: { color: '#829598', fontSize: 12 },
 });

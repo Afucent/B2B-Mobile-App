@@ -7,6 +7,7 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { APP_VERSION, Colors, Radius } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { DEFAULT_SETTINGS, getSettings, saveSettings, type AppSettings } from '@/lib/settings';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SettingsScreen() {
   const { logout } = useAuth();
@@ -23,11 +24,14 @@ export default function SettingsScreen() {
     setSettings(merged);
     await saveSettings(merged);
   }
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Settings" onBack={() => router.back()} />
-      <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView
+        contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 20 }]}
+        scrollIndicatorInsets={{ bottom: insets.bottom }}>
         <Text style={styles.group}>Notifications</Text>
         <View style={styles.card}>
           <Toggle label="Clock-In Reminders" value={settings.clockInReminders} onChange={(v) => void patch({ clockInReminders: v })} />
