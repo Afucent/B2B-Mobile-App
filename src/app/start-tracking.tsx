@@ -1,8 +1,9 @@
 import LocationMap from '@/components/LocationMap';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
@@ -10,15 +11,14 @@ import { Colors, Radius } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useTracking } from '@/context/TrackingContext';
 import {
-  endLocation,
   getEmployeeLiveDetail,
   getTodayStatus,
-  startLocation,
   type EmployeeLiveDetail,
   type TodayStatus,
 } from '@/lib/api/attendance';
+import { executeEndTracking, executeStartTracking, gateAttendanceLocation } from '@/lib/attendanceActions';
 import { durationLabel, formatClock, formatKm } from '@/lib/format';
-import { requestLocation, type DeviceLocation } from '@/lib/location';
+import { getLastKnownLocation, requestLocation, type DeviceLocation } from '@/lib/location';
 
 export default function StartTrackingScreen() {
   const { user } = useAuth();
@@ -30,6 +30,7 @@ export default function StartTrackingScreen() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(new Date());
+  const insets = useSafeAreaInsets();
 
   const refresh = useCallback(async () => {
     if (!user) return;
@@ -59,26 +60,8 @@ export default function StartTrackingScreen() {
 
   useEffect(() => {
     void (async () => {
-      try {
-        setLoc(await requestLocation());
-      } catch (err) {
-        const code = err && typeof err === 'object' && 'code' in err ? String(err.code) : '';
-        if (code === 'services_off') {
-          router.replace({
-            pathname: '/location-required',
-            params: { reason: 'off', next: '/start-tracking' },
-          });
-          return;
-        }
-        if (code === 'denied') {
-          router.replace({
-            pathname: '/location-required',
-            params: { reason: 'denied', next: '/start-tracking' },
-          });
-          return;
-        }
-        setError(err instanceof Error ? err.message : 'Unable to read GPS.');
-      }
+      const last = await getLastKnownLocation();
+      if (last) setLoc(last);
     })();
   }, []);
 
@@ -96,12 +79,26 @@ export default function StartTrackingScreen() {
     setBusy(true);
     setError('');
     try {
-      const next = loc ?? (await requestLocation());
-      setLoc(next);
-      await startLocation(next.latitude, next.longitude);
+      const block = await gateAttendanceLocation('/start-tracking', {
+        requireAlways: true,
+        pending: { type: 'start-tracking', returnTo: '/start-tracking', pingMinutes },
+      });
+      if (block) {
+        router.push(block);
+        return;
+      }
+      const result = await executeStartTracking(pingMinutes, loc, '/start-tracking');
+      if (!result.ok) {
+        await refreshStatus();
+        if (result.error.kind === 'navigate') {
+          router.replace(result.error.href);
+          return;
+        }
+        setError(result.error.kind === 'message' ? result.error.message : 'Unable to start tracking.');
+        return;
+      }
+      setLoc(result.data.loc);
       await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to start tracking.');
     } finally {
       setBusy(false);
     }
@@ -111,13 +108,18 @@ export default function StartTrackingScreen() {
     setBusy(true);
     setError('');
     try {
-      const next = loc ?? (await requestLocation());
-      setLoc(next);
-      await endLocation(next.latitude, next.longitude);
+      const result = await executeEndTracking(loc);
+      if (!result.ok) {
+        if (result.error.kind === 'navigate') {
+          router.replace(result.error.href);
+          return;
+        }
+        setError(result.error.kind === 'message' ? result.error.message : 'Unable to end tracking.');
+        return;
+      }
+      setLoc(result.data.loc);
       await refreshStatus();
       router.replace('/(app)/clock');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to end tracking.');
     } finally {
       setBusy(false);
     }
@@ -174,8 +176,20 @@ export default function StartTrackingScreen() {
         </View>
       </View>
 
-      <View style={styles.sheet}>
-        {loading ? <Text style={styles.meta}>Loading live tracking…</Text> : null}
+      <ScrollView
+        style={styles.sheet}
+        contentContainerStyle={[
+          styles.sheetContent,
+          {
+            paddingBottom: Math.max(insets.bottom + 20, 32),
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {loading ? (
+          <Text style={styles.meta}>Loading live tracking…</Text>
+        ) : null}
 
         <Text style={styles.posLabel}>Current position</Text>
         <Text style={styles.posValue}>
@@ -191,7 +205,7 @@ export default function StartTrackingScreen() {
                 : '—'}
             </Text>
           </View>
-          <View style={{ alignItems: 'flex-end' }}>
+          <View style={styles.metricRight}>
             <Text style={styles.metricLabel}>Distance</Text>
             <Text style={styles.metricValue}>
               {trackingActive ? formatKm(live?.distance_today_km) : '—'}
@@ -206,28 +220,30 @@ export default function StartTrackingScreen() {
             <Text style={styles.meta}>Last ping · {live.last_ping_label}</Text>
           ) : null}
           <Text style={styles.meta}>
-            Location logs every {pingMinutes} min while tracking (app open)
+            Location logs every {pingMinutes} min while tracking, including with the app closed or the screen off.
           </Text>
         </View>
 
         <Text style={styles.note}>
-          Tracking continues in the background while you use the app. End tracking stops location
-          updates without clocking out.
+          Tracking continues after you leave the app and turn the screen off. Allow location all the time, keep the persistent “AFBEX location tracking” notification on, and disable
+          battery optimization for AFBEX. End tracking stops location updates without clocking out.
         </Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        {trackingActive ? (
-          <PrimaryButton label="End Tracking" onPress={() => void onEndTracking()} loading={busy} />
-        ) : (
-          <PrimaryButton
-            label="Start Tracking"
-            onPress={() => void onStartTracking()}
-            loading={busy}
-            disabled={!today?.is_clocked_in}
-          />
-        )}
-      </View>
+        <View style={styles.buttonContainer}>
+          {trackingActive ? (
+            <PrimaryButton label="End Tracking" onPress={() => void onEndTracking()} loading={busy} />
+          ) : (
+            <PrimaryButton
+              label="Start Tracking"
+              onPress={() => void onStartTracking()}
+              loading={busy}
+              disabled={!today?.is_clocked_in}
+            />
+          )}
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -244,23 +260,96 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  gpsOn: { backgroundColor: 'rgba(4,120,87,0.9)' },
-  gpsOff: { backgroundColor: 'rgba(20,20,20,0.72)' },
-  gpsText: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 0.6 },
-  sheet: { padding: 20, gap: 10, flex: 1 },
-  posLabel: { color: Colors.muted, fontSize: 13 },
-  posValue: { fontSize: 18, fontWeight: '800', color: Colors.heading, marginTop: -4 },
-  metricSplit: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-  metricLabel: { color: Colors.muted, fontSize: 12 },
-  metricValue: { fontSize: 22, fontWeight: '800', color: Colors.heading },
+
+  gpsOn: {
+    backgroundColor: 'rgba(4,120,87,0.9)',
+  },
+
+  gpsOff: {
+    backgroundColor: 'rgba(20,20,20,0.72)',
+  },
+
+  gpsText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+
+  sheet: {
+    flex: 1,
+  },
+
+  sheetContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    gap: 10,
+  },
+
+  posLabel: {
+    color: Colors.muted,
+    fontSize: 13,
+  },
+
+  posValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: Colors.heading,
+    marginTop: -4,
+  },
+
+  metricSplit: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+
+  metricRight: {
+    alignItems: 'flex-end',
+  },
+
+  metricLabel: {
+    color: Colors.muted,
+    fontSize: 12,
+  },
+
+  metricValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: Colors.heading,
+  },
+
   metaCard: {
     backgroundColor: Colors.surface,
     borderRadius: Radius.md,
     padding: 12,
     gap: 4,
   },
-  metaValue: { color: Colors.heading, fontWeight: '700', fontSize: 16 },
-  note: { color: Colors.muted, fontSize: 13, lineHeight: 18 },
-  meta: { color: Colors.muted, fontSize: 12 },
-  error: { color: Colors.danger, fontSize: 13 },
+
+  metaValue: {
+    color: Colors.heading,
+    fontWeight: '700',
+    fontSize: 16,
+  },
+
+  note: {
+    color: Colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+
+  meta: {
+    color: Colors.muted,
+    fontSize: 12,
+  },
+
+  error: {
+    color: Colors.danger,
+    fontSize: 13,
+  },
+
+  buttonContainer: {
+    marginTop: 4,
+  },
 });
+

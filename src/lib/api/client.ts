@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-import { getToken } from '@/lib/storage';
+import { getPersistedApiBase, getToken, persistApiBase } from '@/lib/storage';
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 180_000;
 const DEFAULT_MUTATION_TIMEOUT_MS = 300_000;
@@ -34,29 +34,101 @@ function isLanHost(host: string): boolean {
   return /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
 }
 
-function resolveApiBase(): string {
-  const configured = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '');
+let rememberedApiBase: string | null = null;
+let storeHydrate: Promise<void> | null = null;
 
-  // In Expo Go / metro, the phone already reached this host to download JS.
-  // Prefer it for the API so a stale .env IP cannot break same-Wi‑Fi local backend.
+export function isPlaceholderApiBase(url: string) {
+  return /10\.0\.2\.[0-9]+|127\.0\.0\.1|localhost/i.test(url);
+}
+
+function configuredApiBase(): string | null {
+  const fromEnv = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, '') || null;
+  if (fromEnv && !isPlaceholderApiBase(fromEnv) && !/stage-fsa\.afbex\.com/i.test(fromEnv)) {
+    return fromEnv;
+  }
+  const extra = (Constants.expoConfig?.extra as { apiUrl?: string } | undefined)?.apiUrl
+    ?.trim()
+    .replace(/\/$/, '');
+  if (extra && !isPlaceholderApiBase(extra)) return extra;
+  return fromEnv && !isPlaceholderApiBase(fromEnv) ? fromEnv : null;
+}
+
+export function hydrateApiBaseCache(url: string | null | undefined) {
+  if (url?.trim()) {
+    rememberedApiBase = url.trim().replace(/\/$/, '');
+  }
+}
+
+/** Wait for SecureStore. Release APK must use EXPO_PUBLIC_API_URL baked in at EAS build time. */
+export async function ensureApiBaseReady(): Promise<string> {
+  const configured = configuredApiBase();
+  if (configured) {
+    if (rememberedApiBase !== configured) {
+      rememberedApiBase = configured;
+      void persistApiBase(configured);
+    }
+    return configured;
+  }
+
   if (__DEV__) {
-    const devHost = getExpoDevHost();
-    if (devHost && isLanHost(devHost)) {
-      return `http://${devHost}:${DEFAULT_API_PORT}${API_PATH}`;
+    const metroUrl = resolveApiBase({ persist: true });
+    if (metroUrl && !isPlaceholderApiBase(metroUrl)) {
+      return metroUrl;
     }
   }
 
+  if (rememberedApiBase && !isPlaceholderApiBase(rememberedApiBase)) {
+    return rememberedApiBase;
+  }
+  if (!storeHydrate) {
+    storeHydrate = getPersistedApiBase()
+      .then((url) => {
+        if (url && !isPlaceholderApiBase(url)) hydrateApiBaseCache(url);
+      })
+      .catch(() => undefined);
+  }
+  await storeHydrate;
+  return resolveApiBase();
+}
+
+function rememberApiBase(url: string, persist = true) {
+  if (!url || url.includes('10.0.2.2') || url.includes('localhost')) return;
+  rememberedApiBase = url;
+  if (persist) void persistApiBase(url);
+}
+
+function resolveApiBase(options?: { persist?: boolean }): string {
+  const persist = options?.persist !== false;
+  const configured = configuredApiBase();
+
   if (configured) {
+    rememberApiBase(configured, persist);
     return configured;
+  }
+
+  // In Expo Go / Metro, the phone already reached this LAN host for JS.
+  if (__DEV__) {
+    const devHost = getExpoDevHost();
+    if (devHost && isLanHost(devHost)) {
+      const url = `http://${devHost}:${DEFAULT_API_PORT}${API_PATH}`;
+      rememberApiBase(url, persist);
+      return url;
+    }
+  }
+
+  if (rememberedApiBase && !isPlaceholderApiBase(rememberedApiBase)) {
+    return rememberedApiBase;
   }
 
   if (__DEV__ && Platform.OS === 'android') {
     return `http://10.0.2.2:${DEFAULT_API_PORT}${API_PATH}`;
   }
-  if (Platform.OS === 'android') {
-    return `http://10.0.2.2:${DEFAULT_API_PORT}${API_PATH}`;
+  if (__DEV__) {
+    return `http://localhost:${DEFAULT_API_PORT}${API_PATH}`;
   }
-  return `http://localhost:${DEFAULT_API_PORT}${API_PATH}`;
+
+  // Release build without EXPO_PUBLIC_API_URL (EAS cloud does not read gitignored .env).
+  return `http://10.0.2.2:${DEFAULT_API_PORT}${API_PATH}`;
 }
 
 /** Resolved per request so Expo hostUri updates are picked up after reload. */
@@ -65,7 +137,7 @@ export function getApiBase(): string {
 }
 
 /** @deprecated use getApiBase() — kept for call sites that import a constant */
-export const API_BASE = resolveApiBase();
+export const API_BASE = resolveApiBase({ persist: false });
 
 function formatApiError(detail: unknown, fallback: string) {
   if (typeof detail === 'string') return detail;
@@ -95,7 +167,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const { body, auth = true, headers, timeout, ...rest } = options;
   const method = (rest.method ?? 'GET').toUpperCase();
   const requestTimeoutMs = resolveRequestTimeoutMs(method, timeout);
-  const apiBase = getApiBase();
+  const apiBase = await ensureApiBaseReady();
 
   const requestHeaders: Record<string, string> = {
     Accept: 'application/json',
@@ -132,10 +204,16 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
         0,
       );
     }
-    throw new ApiRequestError(
-      `Unable to reach the server at ${apiBase}. Same Wi‑Fi alone is not enough — Windows Firewall often blocks port ${DEFAULT_API_PORT}. On the PC run (Admin PowerShell): New-NetFirewallRule -DisplayName "AFBEX Backend 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Any`,
-      0,
-    );
+    let hint: string;
+    if (isPlaceholderApiBase(apiBase)) {
+      hint =
+        'This APK has no API URL baked in. Set EXPO_PUBLIC_API_URL in eas.json (preview/production env) or EAS secrets, then rebuild the APK. Local .env is not used on EAS cloud builds.';
+    } else if (/^https:\/\//i.test(apiBase)) {
+      hint = 'Check internet/VPN and that the server is up. Firewall on your PC is not needed for HTTPS stage URLs.';
+    } else {
+      hint = `Same Wi‑Fi alone is not enough — allow TCP port ${DEFAULT_API_PORT} on the PC (Admin PowerShell): cd D:\\Afucent\\B2B-E-Commerce._Backend\\scripts; .\\allow-port-8000.ps1`;
+    }
+    throw new ApiRequestError(`Unable to reach the server at ${apiBase}. ${hint}`, 0);
   } finally {
     clearTimeout(timeoutId);
   }

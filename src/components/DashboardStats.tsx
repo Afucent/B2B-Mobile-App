@@ -4,7 +4,7 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-import LocationMap from '@/components/LocationMap';
+import LiveGlobeMap from '@/components/LiveGlobeMap';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { usePermissions } from '@/hooks/usePermissions';
 import {
@@ -53,7 +53,6 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
   const [panel, setPanel] = useState<LiveTrackingPanel | null>(null);
   const [cityFilter, setCityFilter] = useState('all');
   const [cities, setCities] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const attendanceDate = useMemo(() => {
@@ -68,7 +67,6 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
 
   const loadBase = useCallback(async () => {
     setError('');
-    setLoading(true);
     try {
       const [summary, live, filters] = await Promise.all([
         canUsers ? getUserSummary().catch(() => null) : Promise.resolve(null),
@@ -85,8 +83,6 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
       setCities(filters.cities ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load dashboard');
-    } finally {
-      setLoading(false);
     }
   }, [canUsers, canLive]);
 
@@ -106,7 +102,12 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
     useCallback(() => {
       void loadBase();
       void loadAttendance();
-    }, [loadBase, loadAttendance]),
+      if (!canLive) return undefined;
+      const id = setInterval(() => {
+        void loadBase();
+      }, 60_000);
+      return () => clearInterval(id);
+    }, [loadBase, loadAttendance, canLive]),
   );
 
   useEffect(() => {
@@ -142,11 +143,13 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
           longitude: item.last_longitude as number,
           label: item.employee_name,
           color: STATUS_COLOR[item.status ?? 'offline'] ?? STATUS_COLOR.offline,
+          status: item.status,
+          initials: item.employee_initials,
+          avatarUrl: item.avatar_url,
+          address: item.last_address,
         })),
     [mapItems],
   );
-
-  const center = markers[0] ?? { latitude: 28.6139, longitude: 77.209 };
 
   const isOrgAttendance = attendance?.scope === 'org' || canUsers || isOrgAdmin;
   const myStatus = attendance?.present
@@ -163,7 +166,6 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
       <Text style={styles.heading}>
         {isOrgAdmin || canUsers ? 'Organisation dashboard' : 'My dashboard'}
       </Text>
-      {loading ? <Text style={styles.meta}>Loading dashboard…</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       {(canUsers || (canAttendance && isOrgAttendance)) && (
@@ -280,11 +282,10 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
               onChange={setCityFilter}
             />
           ) : null}
-          <LocationMap
-            latitude={center.latitude}
-            longitude={center.longitude}
-            height={260}
-            zoom={markers.length > 3 ? 5 : markers.length > 1 ? 11 : 14}
+          <LiveGlobeMap
+            height={280}
+            compact
+            pingMinutes={panel?.gps_ping_interval_minutes ?? 5}
             markers={markers}
             onMarkerPress={(id) =>
               router.push({
@@ -295,8 +296,7 @@ export default function DashboardStats({ refreshKey = 0 }: Props) {
           />
           {markers.length === 0 ? (
             <Text style={styles.meta}>
-              No one is sharing live location yet
-              {cityFilter !== 'all' ? ' in this city' : ''}. World map shown until tracking starts.
+              No live GPS points yet. Employees appear after Start Tracking.
             </Text>
           ) : null}
           <LiveLegend items={mapItems} />

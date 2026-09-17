@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -7,7 +7,9 @@ import { OutlineButton } from '@/components/ui/OutlineButton';
 import { KeyboardSafeScrollView } from '@/components/ui/KeyboardSafeScrollView';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import RequireModuleAccess from '@/components/RequireModuleAccess';
+import { SafeScreen } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { StatusPill } from '@/components/ui/StatusPill';
 import { TextField } from '@/components/ui/TextField';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { usePermissions } from '@/hooks/usePermissions';
@@ -15,6 +17,7 @@ import {
   createTenantRole,
   deleteTenantRole,
   listTenantRoles,
+  updateTenantRole,
   type TenantRole,
 } from '@/lib/api/rbac';
 import {
@@ -33,19 +36,22 @@ function roleSortKey(name: string): [number, string] {
 }
 
 export default function AdminRolesScreen() {
-  const { canView, canCreate, canDelete, isOrgAdmin } = usePermissions();
+  const { canView, canCreate, canEdit, canDelete, isOrgAdmin } = usePermissions();
   const [items, setItems] = useState<TenantRole[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const canManageRoles = isOrgAdmin || canCreate('role_library') || canCreate('rbac');
+  const canEditRoles = isOrgAdmin || canEdit('role_library') || canEdit('rbac');
   const canDeleteRoles = isOrgAdmin || canDelete('role_library') || canDelete('rbac');
 
   const load = useCallback(async () => {
@@ -92,6 +98,16 @@ export default function AdminRolesScreen() {
 
   const selected = items.find((r) => r.id === selectedId) ?? null;
 
+  useEffect(() => {
+    if (!selected || selected.is_system) {
+      setEditName('');
+      setEditDescription('');
+      return;
+    }
+    setEditName(selected.name);
+    setEditDescription(selected.description ?? '');
+  }, [selected?.id, selected?.name, selected?.description, selected?.is_system]);
+
   const accessSummary = useMemo(() => {
     if (!selected) return [];
     const modules = new Set(
@@ -132,6 +148,31 @@ export default function AdminRolesScreen() {
     }
   }
 
+  async function handleSaveRole() {
+    if (!selected || selected.is_system || !canEditRoles) return;
+    const name = editName.trim();
+    const description = editDescription.trim();
+    if (name.length < 2) {
+      setError('Role name must contain at least 2 characters.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setMessage('');
+    try {
+      const updated = await updateTenantRole(selected.id, {
+        name,
+        description: description || null,
+      });
+      setItems((prev) => prev.map((role) => (role.id === updated.id ? updated : role)));
+      setMessage('Role details updated.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update role');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function handleDelete(role: TenantRole) {
     if (!canDeleteRoles || role.is_system) return;
     if (normalizeRoleKey(role.name) === 'dealer') return;
@@ -157,7 +198,7 @@ export default function AdminRolesScreen() {
 
   return (
     <RequireModuleAccess modules={['rbac', 'role_library', 'permission_matrix']}>
-      <View style={styles.flex}>
+      <SafeScreen>
         <ScreenHeader title="Role library" onBack={() => router.back()} />
         <KeyboardSafeScrollView contentContainerStyle={styles.body}>
           {canManageRoles ? (
@@ -202,7 +243,12 @@ export default function AdminRolesScreen() {
           {message ? <Text style={styles.ok}>{message}</Text> : null}
 
           {!loading && filtered.length === 0 ? (
-            <Text style={styles.meta}>No roles found.</Text>
+            <View style={styles.emptyWrap}>
+              <Text style={styles.emptyTitle}>No roles found</Text>
+              <Text style={styles.emptyCopy}>
+                Try a different search, or create a custom role to get started.
+              </Text>
+            </View>
           ) : null}
 
           {filtered.map((item) => (
@@ -210,20 +256,47 @@ export default function AdminRolesScreen() {
               key={item.id}
               style={[styles.row, selectedId === item.id && styles.rowOn]}
               onPress={() => setSelectedId(item.id)}>
-              <View style={{ flex: 1 }}>
+              <View style={{ flex: 1, gap: 4 }}>
                 <Text style={styles.name}>{formatRoleName(item.name)}</Text>
                 <Text style={styles.sub}>
-                  {item.is_system ? 'System' : 'Custom'} · {item.user_count ?? 0} users ·{' '}
-                  {item.permissions?.length ?? 0} perms
+                  {item.user_count ?? 0} users · {item.permissions?.length ?? 0} permissions
                 </Text>
               </View>
+              <StatusPill
+                label={item.is_system ? 'System' : 'Custom'}
+                tone={item.is_system ? 'muted' : 'brand'}
+              />
             </Pressable>
           ))}
 
           {selected ? (
             <View style={styles.detail}>
-              <Text style={styles.detailTitle}>{formatRoleName(selected.name)}</Text>
-              <Text style={styles.sub}>{selected.description || 'No description'}</Text>
+              {!selected.is_system && canEditRoles ? (
+                <>
+                  <TextField
+                    label="Role name *"
+                    value={editName}
+                    onChangeText={setEditName}
+                    autoCapitalize="words"
+                  />
+                  <TextField
+                    label="Description"
+                    value={editDescription}
+                    onChangeText={setEditDescription}
+                    autoCapitalize="sentences"
+                  />
+                  <PrimaryButton
+                    label="Save role"
+                    onPress={() => void handleSaveRole()}
+                    loading={busy}
+                  />
+                </>
+              ) : (
+                <>
+                  <Text style={styles.detailTitle}>{formatRoleName(selected.name)}</Text>
+                  <Text style={styles.sub}>{selected.description || 'No description'}</Text>
+                </>
+              )}
               <Text style={styles.sub}>
                 {selected.user_count ?? 0} assigned users · {selected.permissions?.length ?? 0}{' '}
                 permissions
@@ -233,7 +306,7 @@ export default function AdminRolesScreen() {
               ) : (
                 <Text style={styles.sub}>No view permissions yet</Text>
               )}
-              {(canView('permission_matrix') || canView('rbac') || canView('role_library')) ? (
+              {/* {(canView('permission_matrix') || canView('rbac') || canView('role_library')) ? (
                 <OutlineButton
                   label="Edit permissions in matrix"
                   onPress={() =>
@@ -243,7 +316,7 @@ export default function AdminRolesScreen() {
                     })
                   }
                 />
-              ) : null}
+              ) : null} */}
               {canDeleteRoles &&
               !selected.is_system &&
               normalizeRoleKey(selected.name) !== 'dealer' ? (
@@ -254,17 +327,19 @@ export default function AdminRolesScreen() {
             </View>
           ) : null}
         </KeyboardSafeScrollView>
-      </View>
+      </SafeScreen>
     </RequireModuleAccess>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { padding: Spacing.md, gap: Spacing.sm, paddingBottom: Spacing.xl },
+  body: { padding: Spacing.md, gap: Spacing.sm },
   meta: { color: Colors.muted },
   error: { color: Colors.danger },
   ok: { color: Colors.brand, fontWeight: '600' },
+  emptyWrap: { paddingVertical: Spacing.lg, paddingHorizontal: Spacing.md, alignItems: 'center', gap: 6 },
+  emptyTitle: { color: Colors.heading, fontWeight: '700', fontSize: 15, textAlign: 'center' },
+  emptyCopy: { color: Colors.muted, fontSize: 13, lineHeight: 18, textAlign: 'center' },
   createCard: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md,
@@ -274,13 +349,17 @@ const styles = StyleSheet.create({
   row: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md,
-    padding: Spacing.md,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: Colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   rowOn: { borderColor: Colors.brand, backgroundColor: Colors.brandSoft },
-  name: { fontWeight: '700', color: Colors.heading },
-  sub: { color: Colors.muted, fontSize: 12, marginTop: 2 },
+  name: { fontWeight: '700', color: Colors.heading, fontSize: 15 },
+  sub: { color: Colors.muted, fontSize: 13, lineHeight: 18, marginTop: 2 },
   detail: {
     backgroundColor: Colors.background,
     borderRadius: Radius.md,

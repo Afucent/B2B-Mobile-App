@@ -59,6 +59,28 @@ export function getVisitAssignOptions() {
   }>('/visits/assign-options');
 }
 
+export function getAssignedVisits() {
+  return apiRequest<{ items: FieldVisit[]; total: number }>('/visits/assignments');
+}
+
+export function updateVisitAssignment(
+  id: string,
+  data: {
+    employee_id: string;
+    dealer_id: string;
+    scheduled_at: string;
+  },
+) {
+  return apiRequest<FieldVisit>(`/visits/${id}/assignment`, {
+    method: 'PATCH',
+    body: data,
+  });
+}
+
+export function deleteVisitAssignment(id: string) {
+  return apiRequest<void>(`/visits/${id}/assignment`, { method: 'DELETE' });
+}
+
 export function getMyVisits(day?: string) {
   const q = day ? `?day=${encodeURIComponent(day)}` : '';
   return apiRequest<{ items: FieldVisit[]; total: number }>(`/visits/my${q}`);
@@ -104,7 +126,7 @@ export function getMyVisit(visitId: string) {
 
 export function checkInVisit(
   visitId: string,
-  data: { latitude: number; longitude: number; address?: string },
+  data: { latitude: number; longitude: number; address?: string | null },
 ) {
   // Dedicated check-in endpoint; /reached is the same operation (kept for compatibility).
   return apiRequest<FieldVisit>(`/visits/${visitId}/reached`, {
@@ -115,7 +137,7 @@ export function checkInVisit(
 
 export function markVisitReached(
   visitId: string,
-  data: { latitude: number; longitude: number; address?: string },
+  data: { latitude: number; longitude: number; address?: string | null },
 ) {
   return apiRequest<FieldVisit>(`/visits/${visitId}/reached`, { method: 'POST', body: data });
 }
@@ -127,7 +149,7 @@ export function completeVisit(
     photo_url?: string;
     latitude?: number;
     longitude?: number;
-    address?: string;
+    address?: string | null;
   },
 ) {
   return apiRequest<FieldVisit>(`/visits/${visitId}/complete`, { method: 'POST', body: data });

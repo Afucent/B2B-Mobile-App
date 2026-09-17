@@ -14,6 +14,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  StyleSheet,
   useWindowDimensions,
   type ScrollViewProps,
   type StyleProp,
@@ -127,6 +128,15 @@ export const KeyboardSafeScrollView = forwardRef<ScrollView, Props>(function Key
       ? insets.bottom + keyboardHeight + 40
       : insets.bottom + 40;
 
+  const flatContent = StyleSheet.flatten(contentContainerStyle) ?? {};
+  const requestedBottom =
+    typeof flatContent.paddingBottom === 'number' ? flatContent.paddingBottom : 0;
+  const mergedContentStyle: ViewStyle = {
+    ...flatContent,
+    flexGrow: 1,
+    paddingBottom: Math.max(bottomPad, requestedBottom),
+  };
+
   return (
     <KeyboardScrollContext.Provider value={contextValue}>
       <KeyboardAvoidingView
@@ -142,7 +152,7 @@ export const KeyboardSafeScrollView = forwardRef<ScrollView, Props>(function Key
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
           automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
-          contentContainerStyle={[{ paddingBottom: bottomPad, flexGrow: 1 }, contentContainerStyle]}
+          contentContainerStyle={mergedContentStyle}
           style={[{ flex: 1 }, style]}
           {...props}>
           {children}

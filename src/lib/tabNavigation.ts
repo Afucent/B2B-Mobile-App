@@ -98,18 +98,18 @@ const FIELD_LINKS: TabNavLink[] = [
     visible: (ctx) => ctx.canView('visit_assign') || ctx.canCreate('visit_assign'),
   },
   {
-    title: 'Visits',
-    subtitle: 'Today’s assigned visits — complete with notes & photo',
+    title: 'My Visits',
+    subtitle: 'Your assigned visits — check-in / complete with notes & photo',
     href: '/(app)/visits',
     module: 'field_visits',
-    visible: () => true,
+    visible: (ctx) => ctx.canView('field_visits') || ctx.canCreate('field_visits'),
   },
   {
     title: 'Visit history',
     subtitle: 'Completed visits by employee',
     href: '/visit-history',
     module: 'visit_history',
-    visible: () => true,
+    visible: (ctx) => ctx.canView('visit_history'),
   },
   {
     title: 'Live tracking',
@@ -121,7 +121,7 @@ const FIELD_LINKS: TabNavLink[] = [
     title: 'Field ops settings',
     subtitle: 'Shift windows & GPS tracking',
     href: '/(admin)/field-ops-settings',
-    module: 'organization',
+    module: 'shift_gps_settings',
   },
 ];
 
@@ -159,20 +159,23 @@ type TabVisibilityContext = {
 export function getVisibleAppTabs(ctx: TabVisibilityContext): AppTabName[] {
   const tabs: AppTabName[] = ['index'];
 
+  // Clock: employee My Attendance & Leave, leave/attendance admins, or org admin.
+  // Do not use Requests/Attendance create as a substitute for employee clock-in.
   const showClock =
+    ctx.isOrgAdmin ||
     ctx.showMyAttendanceLeave ||
-    ctx.has('attendance', 'create') ||
-    ctx.has('attendance', 'clock') ||
-    ctx.has('leave_requests', 'create') ||
-    ctx.has('my_attendance_leave', 'create');
+    canAccessLeaveManagement(ctx);
 
+  // Field: only when at least one field module is allowed — never tied to Clock.
   const showField =
-    showClock ||
-    ctx.canView('live_location') ||
-    ctx.canView('visit_assign') ||
-    ctx.canView('visit_history') ||
-    ctx.canView('field_visits') ||
-    ctx.canView('organization');
+    ctx.fieldTrackingEnabled &&
+    (ctx.canView('live_location') ||
+      ctx.canView('visit_assign') ||
+      ctx.has('visit_assign', 'create') ||
+      ctx.canView('visit_history') ||
+      ctx.canView('field_visits') ||
+      ctx.has('field_visits', 'create') ||
+      ctx.canView('shift_gps_settings'));
 
   if (showClock) tabs.push('clock');
   if (showField) tabs.push('field');

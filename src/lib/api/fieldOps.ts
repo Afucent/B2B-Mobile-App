@@ -49,11 +49,15 @@ export type AttendanceDayEntry = {
   employee_initials?: string;
   avatar_url?: string | null;
   designation?: string | null;
+  roles: string[];
+  city?: string | null;
+  access_surface?: 'web' | 'mobile' | 'both' | string;
   attendance_record_id: string;
-  clock_in_time: string;
+  clock_in_time?: string | null;
   clock_out_time?: string | null;
   working_hours?: number | null;
   status?: string | null;
+  daily_status: 'present' | 'absent' | 'leave' | string;
   on_location: boolean;
   last_latitude?: number | null;
   last_longitude?: number | null;
@@ -70,9 +74,26 @@ export type AttendanceDayBoard = {
   off_location: number;
 };
 
-export function getAttendanceDayBoard(date?: string) {
-  const q = date ? `?date=${encodeURIComponent(date)}` : '';
+export function getAttendanceDayBoard(
+  date?: string,
+  audience: 'employee' | 'user' = 'employee',
+) {
+  const params = new URLSearchParams({ audience });
+  if (date) params.set('date', date);
+  const q = `?${params.toString()}`;
   return apiRequest<AttendanceDayBoard>(`/attendance/day-board${q}`);
+}
+
+export type EmployeeMonthAttendance = {
+  employee_id: string;
+  month: string;
+  working_days: string[];
+  days: { date: string; status: 'present' | 'absent' | string }[];
+};
+
+export function getEmployeeMonthAttendance(employeeId: string, month: string) {
+  const params = new URLSearchParams({ employee_id: employeeId, month });
+  return apiRequest<EmployeeMonthAttendance>(`/attendance/employee-month?${params.toString()}`);
 }
 
 export function getLiveTrackingPanel() {
@@ -84,7 +105,10 @@ export type EmployeeLiveDetail = {
   employee_name?: string;
   employee_initials?: string;
   avatar_url?: string | null;
+  role?: string | null;
   designation?: string | null;
+  region_label?: string | null;
+  employee_code?: string | null;
   status?: string | null;
   status_label?: string | null;
   latitude?: number | null;
@@ -93,6 +117,21 @@ export type EmployeeLiveDetail = {
   last_ping_at?: string | null;
   last_ping_label?: string | null;
   clock_in_time?: string | null;
+  late_minutes?: number | null;
+  working_duration_label?: string | null;
+  distance_today_km?: number | null;
+  visits_completed?: number | null;
+  visits_assigned?: number | null;
+  battery_percent?: number | null;
+  visits?: Array<{
+    id: string;
+    store_name?: string | null;
+    dealer_name?: string | null;
+    status?: string;
+    started_at?: string | null;
+    scheduled_at?: string | null;
+    duration_label?: string | null;
+  }>;
   attendance_record_id?: string | null;
   gps_status?: string | null;
 };

@@ -35,6 +35,13 @@ export interface MeResponse {
   mobile: string | null;
   avatar_url?: string | null;
   designation?: string | null;
+  department?: string | null;
+  address?: string | null;
+  area?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  pin_code?: string | null;
   status: string;
   access_surface: string;
   client_surface?: string;
@@ -133,7 +140,20 @@ export function changePassword(data: {
   });
 }
 
-export function updateProfile(data: { name?: string; mobile?: string | null; avatar_url?: string | null }) {
+export function updateProfile(data: {
+  name?: string;
+  personal_email?: string;
+  mobile?: string | null;
+  avatar_url?: string | null;
+  designation?: string | null;
+  department?: string | null;
+  address?: string | null;
+  area?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  pin_code?: string | null;
+}) {
   return apiRequest<MeResponse>('/auth/me', {
     method: 'PATCH',
     body: data,

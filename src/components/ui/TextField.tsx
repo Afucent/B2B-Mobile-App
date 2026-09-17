@@ -16,6 +16,7 @@ interface Props {
   secureTextEntry?: boolean;
   autoCorrect?: boolean;
   editable?: boolean;
+  multiline?: boolean;
 }
 
 export function TextField({
@@ -29,6 +30,7 @@ export function TextField({
   secureTextEntry,
   autoCorrect = false,
   editable = true,
+  multiline = false,
 }: Props) {
   const [hidden, setHidden] = useState(Boolean(secureTextEntry));
   const wrapRef = useRef<View>(null);
@@ -61,8 +63,10 @@ export function TextField({
           keyboardType={keyboardType}
           secureTextEntry={hidden}
           editable={editable}
+          multiline={multiline}
+          numberOfLines={multiline ? 4 : 1}
           onFocus={handleFocus}
-          style={styles.input}
+          style={[styles.input, multiline && styles.multilineInput]}
         />
         {secureTextEntry ? (
           <Pressable onPress={() => setHidden((v) => !v)} hitSlop={8}>
@@ -80,14 +84,14 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   label: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
-    letterSpacing: 0.8,
-    color: Colors.heading,
+    letterSpacing: 0.4,
+    color: Colors.muted,
     textTransform: 'uppercase',
   },
   inputWrap: {
-    minHeight: 48,
+    minHeight: 50,
     borderWidth: 1,
     borderColor: Colors.border,
     borderRadius: Radius.md,
@@ -97,7 +101,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   inputError: {
-    borderColor: Colors.dangerBorder,
+    borderColor: Colors.danger,
+    backgroundColor: Colors.dangerBg,
   },
   input: {
     flex: 1,
@@ -105,8 +110,13 @@ const styles = StyleSheet.create({
     color: Colors.heading,
     paddingVertical: 12,
   },
+  multilineInput: {
+    minHeight: 104,
+    textAlignVertical: 'top',
+  },
   error: {
     fontSize: 12,
     color: Colors.danger,
+    fontWeight: '600',
   },
 });

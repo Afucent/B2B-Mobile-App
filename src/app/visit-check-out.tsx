@@ -14,6 +14,7 @@ import { uploadMedia } from '@/lib/api/uploads';
 import { completeVisit } from '@/lib/api/visits';
 import { formatClock, formatLongDate } from '@/lib/format';
 import { requestLocation, type DeviceLocation } from '@/lib/location';
+import { useContentBottomInset } from '@/components/ui/SafeScreen';
 
 function routeParam(value?: string | string[]) {
   if (Array.isArray(value)) return value[0] ?? '';
@@ -21,6 +22,7 @@ function routeParam(value?: string | string[]) {
 }
 
 export default function VisitCheckOutScreen() {
+  const bottomInset = useContentBottomInset(24);
   const params = useLocalSearchParams<{
     visitId?: string | string[];
     dealerName?: string | string[];
@@ -101,7 +103,7 @@ export default function VisitCheckOutScreen() {
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Check-out" onBack={() => router.back()} />
-      <KeyboardSafeScrollView contentContainerStyle={styles.body}>
+      <KeyboardSafeScrollView contentContainerStyle={[styles.body, { paddingBottom: bottomInset }]}>
         <Text style={styles.dealer}>{routeParam(params.dealerName) || 'Dealer'}</Text>
         {reachedAt ? (
           <Text style={styles.meta}>Checked in · {formatClock(reachedAt)}</Text>
@@ -140,9 +142,9 @@ export default function VisitCheckOutScreen() {
                 {locLoading
                   ? 'Fetching GPS…'
                   : loc?.address ||
-                    (loc
-                      ? `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`
-                      : 'Location unavailable')}
+                  (loc
+                    ? `${loc.latitude.toFixed(5)}, ${loc.longitude.toFixed(5)}`
+                    : 'Location unavailable')}
               </Text>
             </View>
           </View>
@@ -181,7 +183,7 @@ export default function VisitCheckOutScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { padding: Spacing.md, gap: 10, paddingBottom: 32 },
+  body: { padding: Spacing.md, gap: 10 },
   dealer: { fontSize: 18, fontWeight: '800', color: Colors.heading },
   meta: { color: Colors.muted, marginTop: -4 },
   mapWrap: { position: 'relative' },

@@ -4,7 +4,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -12,10 +11,25 @@ import { AppState } from 'react-native';
 
 import { useAuth } from '@/context/AuthContext';
 import { useFieldOpsSettings } from '@/context/FieldOpsSettingsContext';
-import { getTodayStatus, pingLocation } from '@/lib/api/attendance';
-import { requestLocation } from '@/lib/location';
+import { getTodayStatus, type TodayStatus } from '@/lib/api/attendance';
+import {
+  forceStopBackgroundLocation,
+  isBackgroundLocationRunning,
+  isPersistedTrackingActive,
+  isTrackingStartInProgress,
+  persistPingIntervalMinutes,
+  persistTrackingActive,
+  publishGpsRuntimeStatus,
+  sendCatchUpTrackingPingIfDue,
+  startBackgroundLocation,
+  stopBackgroundLocation,
+  warmBackgroundTrackingSession,
+} from '@/lib/backgroundLocation';
 
 type TrackingContextValue = {
+  /** Shared attendance session — same source for Home + Clock tabs. */
+  today: TodayStatus | null;
+  isClockedIn: boolean;
   trackingActive: boolean;
   pingMinutes: number;
   refreshStatus: () => Promise<void>;
@@ -23,35 +37,82 @@ type TrackingContextValue = {
 
 const TrackingContext = createContext<TrackingContextValue | null>(null);
 
-const DEFAULT_PING_MINUTES = 20;
+/** Fallback only when org settings are not loaded yet. */
+const DEFAULT_PING_MINUTES = 1;
 
 export function TrackingProvider({ children }: { children: ReactNode }) {
   const { status } = useAuth();
   const { settings: orgSettings, refreshSettings } = useFieldOpsSettings();
+  const [today, setToday] = useState<TodayStatus | null>(null);
   const [trackingActive, setTrackingActive] = useState(false);
-  const pingInFlight = useRef(false);
-  const lastPingAt = useRef<number | null>(null);
 
   const pingMinutes = Math.min(
     Math.max(orgSettings?.gps_ping_interval_minutes ?? DEFAULT_PING_MINUTES, 1),
     60,
   );
-  const accuracyThresholdM = orgSettings?.location_accuracy_threshold_m ?? null;
 
   const refreshStatus = useCallback(async () => {
-    if (status !== 'signedIn') {
+    if (status !== 'signedIn') return;
+    try {
+      const next = await getTodayStatus().catch(() => null);
+      // Network failure must not stop GPS while the screen is off.
+      if (!next) return;
+
+      setToday(next);
+      const active = Boolean(next.tracking_active);
+
+      if (active) {
+        setTrackingActive(true);
+        await persistTrackingActive(true);
+        await warmBackgroundTrackingSession();
+        const running = await isBackgroundLocationRunning();
+        await publishGpsRuntimeStatus(running ? 'status_running' : 'status_not_running');
+        if (!running && AppState.currentState === 'active') {
+          await startBackgroundLocation();
+          await publishGpsRuntimeStatus('restart_after_status');
+        }
+        return;
+      }
+
+      // Do not fight an in-progress Start Tracking (server not updated yet).
+      if (isTrackingStartInProgress()) {
+        return;
+      }
+
       setTrackingActive(false);
-      return;
+      await persistTrackingActive(false);
+      await stopBackgroundLocation();
+      await publishGpsRuntimeStatus('status_idle');
+    } catch {
+      // Keep existing tracking state on unexpected errors.
     }
-    const today = await getTodayStatus().catch(() => null);
-    setTrackingActive(Boolean(today?.tracking_active));
   }, [status]);
 
   useEffect(() => {
-    if (status !== 'signedIn') {
+    void persistPingIntervalMinutes(pingMinutes).catch(() => undefined);
+  }, [pingMinutes]);
+
+  useEffect(() => {
+    void isPersistedTrackingActive()
+      .then((active) => {
+        if (!active) return;
+        setTrackingActive(true);
+        void warmBackgroundTrackingSession();
+        if (AppState.currentState === 'active') {
+          void startBackgroundLocation();
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (status === 'signedOut') {
+      setToday(null);
       setTrackingActive(false);
+      void forceStopBackgroundLocation();
       return;
     }
+    if (status !== 'signedIn') return;
     void refreshStatus();
     const id = setInterval(() => void refreshStatus(), 60_000);
     return () => clearInterval(id);
@@ -67,69 +128,42 @@ export function TrackingProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (status !== 'signedIn') return;
     const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active') {
-        void refreshSettings();
-        void refreshStatus();
+      if (next !== 'active') return;
+      void refreshSettings();
+      void refreshStatus();
+      void publishGpsRuntimeStatus('app_foreground');
+      if (trackingActive) {
+        void warmBackgroundTrackingSession();
+        void startBackgroundLocation();
+        void sendCatchUpTrackingPingIfDue();
       }
     });
     return () => sub.remove();
-  }, [refreshSettings, refreshStatus, status]);
+  }, [refreshSettings, refreshStatus, status, trackingActive]);
 
   useEffect(() => {
-    if (status !== 'signedIn' || !trackingActive) return;
-
-    let cancelled = false;
-    const pingMs = pingMinutes * 60_000;
-
-    async function sendPing(force = false) {
-      if (pingInFlight.current || cancelled) return;
-      const now = Date.now();
-      if (
-        !force &&
-        lastPingAt.current != null &&
-        now - lastPingAt.current < pingMs - 5000
-      ) {
-        return;
-      }
-      pingInFlight.current = true;
-      try {
-        const loc = await requestLocation();
-        if (cancelled) return;
-        if (
-          accuracyThresholdM != null &&
-          loc.accuracy != null &&
-          loc.accuracy > accuracyThresholdM
-        ) {
-          return;
-        }
-        await pingLocation(loc.latitude, loc.longitude, loc.accuracy ?? undefined);
-        lastPingAt.current = Date.now();
-      } catch (err) {
-        const httpStatus =
-          err && typeof err === 'object' && 'status' in err
-            ? Number((err as { status: number }).status)
-            : 0;
-        if (httpStatus === 429) return;
-      } finally {
-        pingInFlight.current = false;
-      }
+    if (status === 'signedOut' || !trackingActive) return;
+    void warmBackgroundTrackingSession();
+    if (AppState.currentState === 'active') {
+      void startBackgroundLocation();
     }
-
-    void sendPing(true);
-    const timer = setInterval(() => void sendPing(), pingMs);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [accuracyThresholdM, pingMinutes, status, trackingActive]);
+    const id = setInterval(() => {
+      void publishGpsRuntimeStatus('heartbeat');
+      void sendCatchUpTrackingPingIfDue();
+    }, 20_000);
+    void publishGpsRuntimeStatus('tracking_active');
+    return () => clearInterval(id);
+  }, [status, trackingActive]);
 
   const value = useMemo(
     () => ({
+      today,
+      isClockedIn: Boolean(today?.is_clocked_in),
       trackingActive,
       pingMinutes,
       refreshStatus,
     }),
-    [refreshStatus, pingMinutes, trackingActive],
+    [today, refreshStatus, pingMinutes, trackingActive],
   );
 
   return <TrackingContext.Provider value={value}>{children}</TrackingContext.Provider>;

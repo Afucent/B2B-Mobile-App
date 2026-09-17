@@ -1,10 +1,12 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import RequireEmployeeTab from '@/components/RequireEmployeeTab';
 import TabModuleLinks from '@/components/TabModuleLinks';
 import { Colors, Spacing } from '@/constants/theme';
 import { usePermissions } from '@/hooks/usePermissions';
+import { useAppRefresh } from '@/hooks/useAppRefresh';
 import { buildRolesTabSections } from '@/lib/tabNavigation';
 
 export default function RolesScreen() {
@@ -18,6 +20,7 @@ export default function RolesScreen() {
 function RolesContent() {
   const insets = useSafeAreaInsets();
   const { canView, canCreate, canManage } = usePermissions();
+  const { refreshing, refreshKey, onRefresh } = useAppRefresh();
 
   const sections = buildRolesTabSections({
     canView,
@@ -28,8 +31,10 @@ function RolesContent() {
 
   return (
     <ScrollView
+      key={refreshKey}
       style={styles.flex}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, paddingBottom: 40 }]}>
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 40 }]}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} />}>
       <Text style={styles.title}>Users & roles</Text>
       <Text style={styles.subtitle}>Manage users, roles, permissions and dealer assignments</Text>
       <TabModuleLinks sections={sections} />

@@ -7,6 +7,7 @@ import RequireModuleAccess from '@/components/RequireModuleAccess';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius, Spacing } from '@/constants/theme';
 import { listDealerAssignments, type DealerAssignmentRow } from '@/lib/api/users';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function DealerAssignmentsScreen() {
   const [rows, setRows] = useState<DealerAssignmentRow[]>([]);
@@ -51,12 +52,13 @@ export default function DealerAssignmentsScreen() {
   const selected = selectedDealerId
     ? byDealer.find((g) => g.dealer.dealer_id === selectedDealerId)
     : null;
+    const insets = useSafeAreaInsets()
 
   return (
     <RequireModuleAccess module="dealers">
       <View style={styles.flex}>
         <ScreenHeader title="Dealer assignment" onBack={() => router.back()} />
-        <View style={styles.body}>
+        <View style={[styles.body,  { paddingBottom: insets.bottom + 20 }]}>
           <Text style={styles.hint}>
             Tap a dealer to see assigned field users. Assign dealers from Add user or Edit
             employee (same as web).

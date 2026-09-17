@@ -17,6 +17,8 @@ export type AdminNavContext = {
   canCreate: (module: string) => boolean;
   canManage: (module: string) => boolean;
   fieldTrackingEnabled: boolean;
+  /** Org admin manages the team — hide self-service My Visits. */
+  isOrgAdmin?: boolean;
 };
 
 const USERS_ROLES_LINKS: AdminNavLink[] = [
@@ -47,7 +49,7 @@ const FIELD_OPS_LINKS: AdminNavLink[] = [
   {
     title: 'Field ops settings',
     href: '/(admin)/field-ops-settings',
-    module: 'organization',
+    module: 'shift_gps_settings',
   },
   {
     title: 'Live tracking',
@@ -57,6 +59,11 @@ const FIELD_OPS_LINKS: AdminNavLink[] = [
   {
     title: 'Organisation profile',
     href: '/(admin)/organization/profile',
+    module: 'organization',
+  },
+  {
+    title: 'Organisation plan',
+    href: '/(admin)/organization/plan',
     module: 'organization',
   },
   {
@@ -85,7 +92,6 @@ const LEAVE_LINKS: AdminNavLink[] = [
   },
   {
     title: 'Attendance',
-    subtitle: 'Clock in / clock out by day',
     href: '/(admin)/attendance',
     module: 'attendance',
   },

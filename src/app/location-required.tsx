@@ -1,48 +1,74 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { AppState, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { LinkButton } from '@/components/ui/LinkButton';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { useContentBottomInset } from '@/components/ui/SafeScreen';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { Colors, Radius } from '@/constants/theme';
-import { continueLocationAction } from '@/lib/locationGate';
-import { openDeviceSettings } from '@/lib/location';
+import { resumeAfterLocationReady } from '@/lib/attendanceActions';
+import { diagnoseLocation, openAppLocationSettings } from '@/lib/location';
+import { setLocationConsent } from '@/lib/locationConsent';
 
 export default function LocationRequiredScreen() {
+  const bottomInset = useContentBottomInset(24);
   const { reason, next } = useLocalSearchParams<{ reason?: string; next?: string }>();
-  const denied = reason === 'denied';
-  const target = next || '/clock-in';
+  const servicesOff = reason === 'off';
+  const target = next || '/(app)';
+  const [busy, setBusy] = useState(false);
 
-  const steps = denied
-    ? [
-        'Open device Settings',
-        'Find AFBEX under Apps',
-        'Tap Permissions',
-        'Allow Location: Always or While Using',
-      ]
-    : ['Open device Settings', 'Tap Location / Security', 'Turn on location services', 'Return to AFBEX'];
+  const tryContinue = useCallback(async () => {
+    const status = await diagnoseLocation({ always: !servicesOff });
+    if (status === 'ok') {
+      await setLocationConsent(true);
+      await resumeAfterLocationReady(target);
+    }
+  }, [servicesOff, target]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void tryContinue();
+    }, [tryContinue]),
+  );
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void tryContinue();
+    });
+    return () => sub.remove();
+  }, [tryContinue]);
+
+  const steps = servicesOff
+    ? ['Open device Settings', 'Tap Location / Security', 'Turn on location services', 'Return to AFBEX']
+    : [
+        'Tap Open App Settings',
+        'On Location permission, choose Allow all the time',
+        'Return to AFBEX — tracking starts automatically',
+      ];
 
   return (
     <View style={styles.flex}>
       <ScreenHeader title="Location Required" onBack={() => router.back()} />
-      <View style={styles.body}>
-        <View style={[styles.banner, denied ? styles.bannerWarn : styles.bannerOff]}>
-          <Ionicons name="warning" size={18} color={denied ? Colors.pendingText : Colors.pendingText} />
+      <View style={[styles.body, { paddingBottom: bottomInset }]}>
+        <View style={[styles.banner, servicesOff ? styles.bannerOff : styles.bannerWarn]}>
+          <Ionicons name="warning" size={18} color={Colors.pendingText} />
           <View style={{ flex: 1 }}>
             <Text style={styles.bannerTitle}>
-              {denied ? 'Location permission denied' : 'Location is turned off'}
+              {servicesOff ? 'Location is turned off' : 'Allow location all the time'}
             </Text>
             <Text style={styles.bannerCopy}>
-              {denied
-                ? 'AFBEX needs location access to verify your clock-in. Grant permission in settings.'
-                : 'Turn on location services on your device to clock in.'}
+              {servicesOff
+                ? 'Turn on location services on your device to clock in and start tracking.'
+                : 'Open phone Settings and set AFBEX Location to Allow all the time so pings continue with the app closed, in the background, on the lock screen, or with the display off.'}
             </Text>
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.how}>HOW TO {denied ? 'GRANT PERMISSION' : 'ENABLE ON YOUR DEVICE'}</Text>
+          <Text style={styles.how}>HOW TO {servicesOff ? 'ENABLE ON YOUR DEVICE' : 'GRANT PERMISSION'}</Text>
           {steps.map((step, index) => (
             <View key={step} style={styles.step}>
               <View style={styles.num}>
@@ -55,19 +81,19 @@ export default function LocationRequiredScreen() {
 
         <View style={{ flex: 1 }} />
         <PrimaryButton
-          label={denied ? 'Open App Settings' : 'Open Settings'}
-          onPress={() => void openDeviceSettings()}
+          label="Open App Settings"
+          onPress={() => {
+            setBusy(true);
+            void openAppLocationSettings().finally(() => setBusy(false));
+          }}
+          loading={busy}
         />
-        <LinkButton
-          label="Back to Dashboard"
-          onPress={() => router.replace('/(app)')}
-        />
+        <LinkButton label="Back to Dashboard" onPress={() => router.replace('/(app)')} />
         <Text style={styles.foot}>
-          {denied
-            ? 'Location is required per company policy (BR-02).'
-            : "You won't be clocked in until location is available."}
+          {servicesOff
+            ? "You won't be clocked in until location is available."
+            : 'Choose Allow all the time in Settings, then return to the app.'}
         </Text>
-        <LinkButton label="Try again" onPress={() => void continueLocationAction(target)} />
       </View>
     </View>
   );
@@ -75,7 +101,8 @@ export default function LocationRequiredScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: Colors.surface },
-  body: { flex: 1, padding: 16, gap: 14, paddingBottom: 24 },
+  body: { flex: 1, padding: 16, gap: 14 },
+
   banner: {
     borderRadius: Radius.lg,
     padding: 14,
